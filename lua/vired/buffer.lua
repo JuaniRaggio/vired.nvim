@@ -6,6 +6,7 @@ local config = require("vired.config")
 local highlights = require("vired.highlights")
 local git = require("vired.git")
 local undo = require("vired.undo")
+local watcher = require("vired.watcher")
 
 ---@class ViredBuffer
 ---@field bufnr number Buffer number
@@ -67,11 +68,26 @@ function M.create(path)
   -- Load and render
   M.refresh(bufnr)
 
+  -- Start file watcher for auto-refresh
+  watcher.start(bufnr, path)
+
   -- Cleanup on buffer delete
   vim.api.nvim_create_autocmd("BufWipeout", {
     buffer = bufnr,
     callback = function()
+      watcher.stop(bufnr)
       M.buffers[bufnr] = nil
+    end,
+  })
+
+  -- Handle pending refreshes when buffer becomes visible again
+  vim.api.nvim_create_autocmd("BufEnter", {
+    buffer = bufnr,
+    callback = function()
+      if watcher.has_pending_refresh(bufnr) then
+        watcher.clear_pending_refresh(bufnr)
+        M.refresh(bufnr)
+      end
     end,
   })
 
@@ -141,6 +157,9 @@ function M.setup_keymaps(bufnr)
     end,
     ["actions.help"] = function()
       M.action_help(bufnr)
+    end,
+    ["actions.toggle_watch"] = function()
+      M.action_toggle_watch(bufnr)
     end,
   }
 
@@ -402,6 +421,9 @@ function M.navigate(bufnr, path)
 
   -- Update buffer name
   vim.api.nvim_buf_set_name(bufnr, "vired://" .. path)
+
+  -- Update watcher to new path
+  watcher.update(bufnr, path)
 
   -- Refresh
   M.refresh(bufnr)
@@ -776,6 +798,7 @@ function M.action_help(bufnr)
     ["actions.undo"] = "Undo last operation",
     ["actions.redo"] = "Redo last operation",
     ["actions.help"] = "Show this help",
+    ["actions.toggle_watch"] = "Toggle auto-refresh",
   }
 
   -- Build help lines
@@ -797,7 +820,7 @@ function M.action_help(bufnr)
     { name = "Navigation", actions = { "actions.select", "actions.parent", "actions.close", "actions.refresh" } },
     { name = "Marking", actions = { "actions.toggle_mark", "actions.unmark", "actions.unmark_all" } },
     { name = "File Operations", actions = { "actions.move", "actions.copy", "actions.delete", "actions.mkdir", "actions.touch" } },
-    { name = "View", actions = { "actions.toggle_hidden", "actions.preview" } },
+    { name = "View", actions = { "actions.toggle_hidden", "actions.preview", "actions.toggle_watch" } },
     { name = "Edit Mode", actions = { "actions.edit", "actions.edit_cancel" } },
     { name = "Undo/Redo", actions = { "actions.undo", "actions.redo" } },
     { name = "Help", actions = { "actions.help" } },
@@ -894,6 +917,17 @@ function M.action_help(bufnr)
       vim.api.nvim_win_close(win, true)
     end, { buffer = float_bufnr, noremap = true, silent = true })
   end
+end
+
+---Toggle file watcher for auto-refresh
+---@param bufnr number
+function M.action_toggle_watch(bufnr)
+  local buf_data = M.buffers[bufnr]
+  if not buf_data then
+    return
+  end
+
+  watcher.toggle(bufnr, buf_data.path)
 end
 
 return M

@@ -32,6 +32,10 @@
 ---@field markers string[] Files/directories that indicate a project root
 ---@field sort_by "name"|"recent"|"added" Default sort order for projects
 
+---@class ViredWatcherConfig
+---@field enabled boolean Enable auto-refresh on filesystem changes
+---@field debounce_ms number Debounce time in milliseconds
+
 ---@class ViredConfig
 ---@field columns string[]
 ---@field path_picker ViredPathPickerConfig
@@ -44,6 +48,7 @@
 ---@field preview ViredPreviewConfig
 ---@field buffer_editing ViredBufferEditConfig
 ---@field projects ViredProjectsConfig
+---@field watcher ViredWatcherConfig
 ---@field float ViredFloatConfig
 ---@field keymaps table<string, string>
 
@@ -114,6 +119,12 @@ M.defaults = {
     sort_by = "recent", -- "name" | "recent" | "added"
   },
 
+  -- File watcher for auto-refresh
+  watcher = {
+    enabled = true,
+    debounce_ms = 200,
+  },
+
   -- UI floating windows
   float = {
     border = "rounded",
@@ -141,6 +152,7 @@ M.defaults = {
     ["<C-z>"] = "actions.undo", -- Undo last file operation
     ["<C-y>"] = "actions.redo", -- Redo last undone operation
     ["?"] = "actions.help", -- Show help popup
+    ["gw"] = "actions.toggle_watch", -- Toggle auto-refresh watcher
   },
 }
 

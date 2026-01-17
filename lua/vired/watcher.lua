@@ -225,4 +225,74 @@ function M.clear_pending_refresh(bufnr)
   end
 end
 
+---Toggle watcher for a specific buffer
+---@param bufnr number
+---@param path string Current directory path (needed to restart)
+---@return boolean is_now_watching
+function M.toggle(bufnr, path)
+  if M.is_watching(bufnr) then
+    M.stop(bufnr)
+    vim.notify("vired: Auto-refresh disabled", vim.log.levels.INFO)
+    return false
+  else
+    -- Temporarily bypass config check for manual toggle
+    local handle = vim.loop.new_fs_event()
+    if not handle then
+      vim.notify("vired: Failed to start watcher", vim.log.levels.ERROR)
+      return false
+    end
+
+    local watcher = {
+      handle = handle,
+      path = path,
+      timer = nil,
+      pending_refresh = false,
+    }
+
+    watchers[bufnr] = watcher
+
+    local ok = handle:start(path, {}, function(err_watch, filename, events)
+      if err_watch then
+        return
+      end
+
+      if not vim.api.nvim_buf_is_valid(bufnr) then
+        M.stop(bufnr)
+        return
+      end
+
+      local w = watchers[bufnr]
+      if not w then
+        return
+      end
+
+      if w.timer then
+        w.timer:stop()
+        w.timer:close()
+        w.timer = nil
+      end
+
+      w.pending_refresh = true
+
+      w.timer = vim.loop.new_timer()
+      if w.timer then
+        w.timer:start(get_debounce_ms(), 0, function()
+          vim.schedule(function()
+            M._do_refresh(bufnr)
+          end)
+        end)
+      end
+    end)
+
+    if not ok then
+      M.stop(bufnr)
+      vim.notify("vired: Failed to start watcher", vim.log.levels.ERROR)
+      return false
+    end
+
+    vim.notify("vired: Auto-refresh enabled", vim.log.levels.INFO)
+    return true
+  end
+end
+
 return M
