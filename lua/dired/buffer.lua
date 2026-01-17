@@ -126,6 +126,12 @@ function M.setup_keymaps(bufnr)
     ["actions.preview"] = function()
       M.action_preview(bufnr)
     end,
+    ["actions.edit"] = function()
+      M.action_edit(bufnr)
+    end,
+    ["actions.edit_cancel"] = function()
+      M.action_edit_cancel(bufnr)
+    end,
   }
 
   for key, action in pairs(keymaps) do
