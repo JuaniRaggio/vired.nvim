@@ -27,6 +27,9 @@ local change_autocmds = {}
 ---@type table<number, number> Buffer -> timer for debounced highlights
 local highlight_timers = {}
 
+---@type table<number, table> Buffer -> saved keymaps (to restore after edit mode)
+local saved_keymaps = {}
+
 local HEADER_LINES = 1
 local EDIT_NS = vim.api.nvim_create_namespace("vired_edit")
 local HIGHLIGHT_DEBOUNCE_MS = 100 -- Debounce highlight updates for performance
@@ -393,6 +396,66 @@ function M.calculate_diff(bufnr)
 end
 
 -- ============================================================================
+-- Keymap Management for Edit Mode
+-- ============================================================================
+
+---Save and remove vired keymaps from buffer (to allow full vim editing)
+---@param bufnr number
+local function save_and_remove_keymaps(bufnr)
+  local keymaps = config.get().keymaps
+  saved_keymaps[bufnr] = {}
+
+  -- Get all buffer-local keymaps
+  local buf_keymaps = vim.api.nvim_buf_get_keymap(bufnr, "n")
+
+  -- Save and delete vired keymaps
+  for key, _ in pairs(keymaps) do
+    for _, km in ipairs(buf_keymaps) do
+      if km.lhs == key then
+        -- Save the keymap info
+        table.insert(saved_keymaps[bufnr], {
+          mode = "n",
+          lhs = km.lhs,
+          rhs = km.rhs or km.callback,
+          opts = {
+            buffer = bufnr,
+            noremap = km.noremap == 1,
+            silent = km.silent == 1,
+            expr = km.expr == 1,
+            desc = km.desc,
+          },
+        })
+        -- Delete the keymap
+        pcall(vim.keymap.del, "n", key, { buffer = bufnr })
+        break
+      end
+    end
+  end
+end
+
+---Restore vired keymaps to buffer
+---@param bufnr number
+local function restore_keymaps(bufnr)
+  if not saved_keymaps[bufnr] then
+    -- Fallback: re-setup all keymaps
+    local buffer = require("vired.buffer")
+    buffer.setup_keymaps(bufnr)
+    return
+  end
+
+  -- Restore saved keymaps
+  for _, km in ipairs(saved_keymaps[bufnr]) do
+    if type(km.rhs) == "function" then
+      vim.keymap.set(km.mode, km.lhs, km.rhs, km.opts)
+    elseif km.rhs then
+      vim.keymap.set(km.mode, km.lhs, km.rhs, km.opts)
+    end
+  end
+
+  saved_keymaps[bufnr] = nil
+end
+
+-- ============================================================================
 -- Edit Mode Management
 -- ============================================================================
 
@@ -416,6 +479,9 @@ function M.enter_edit_mode(bufnr, buf_data)
 
   -- Clear marks to avoid confusion
   buf_data.marks = {}
+
+  -- Remove vired keymaps to allow full vim editing
+  save_and_remove_keymaps(bufnr)
 
   -- Enable editing
   vim.bo[bufnr].modifiable = true
@@ -454,7 +520,7 @@ function M.enter_edit_mode(bufnr, buf_data)
   -- Initial highlight update (immediate)
   M.update_highlights(bufnr)
 
-  vim.notify("vired: Edit mode enabled. :w to apply, :e! to cancel. Changes highlighted in real-time.", vim.log.levels.INFO)
+  vim.notify("vired: Edit mode - use vim normally. :w to apply changes, :e! to cancel", vim.log.levels.INFO)
 end
 
 ---Clean up edit mode resources
@@ -481,6 +547,9 @@ local function cleanup_edit_mode(bufnr)
   -- Reset buffer options
   vim.bo[bufnr].modifiable = false
   vim.bo[bufnr].buftype = "nofile"
+
+  -- Restore vired keymaps
+  restore_keymaps(bufnr)
 
   edit_mode[bufnr] = nil
 end

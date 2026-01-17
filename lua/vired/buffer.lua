@@ -810,7 +810,7 @@ function M.action_help(bufnr)
     ["actions.mkdir"] = "Create directory",
     ["actions.touch"] = "Create file",
     ["actions.preview"] = "Preview file",
-    ["actions.edit"] = "Enter edit mode (wdired)",
+    ["actions.edit"] = "Edit mode (full vim)",
     ["actions.edit_cancel"] = "Cancel edit mode",
     ["actions.undo"] = "Undo last operation",
     ["actions.redo"] = "Redo last operation",
