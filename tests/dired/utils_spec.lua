@@ -180,4 +180,126 @@ describe("dired.utils", function()
       assert.are.equal("/other/file.txt", utils.relative("/other/file.txt", "/home/user"))
     end)
   end)
+
+  describe("fuzzy_match", function()
+    it("should match exact string", function()
+      local score, positions = utils.fuzzy_match("config", "config")
+      assert.is_not_nil(score)
+      assert.is_true(score > 0)
+      assert.are.same({ 1, 2, 3, 4, 5, 6 }, positions)
+    end)
+
+    it("should match substring", function()
+      local score, positions = utils.fuzzy_match("cfg", "config")
+      assert.is_not_nil(score)
+      -- c=1, o=2, n=3, f=4, i=5, g=6
+      assert.are.same({ 1, 4, 6 }, positions)
+    end)
+
+    it("should be case insensitive", function()
+      local score, positions = utils.fuzzy_match("CFG", "config")
+      assert.is_not_nil(score)
+      assert.are.same({ 1, 4, 6 }, positions)
+    end)
+
+    it("should return nil for no match", function()
+      local score, positions = utils.fuzzy_match("xyz", "config")
+      assert.is_nil(score)
+      assert.is_nil(positions)
+    end)
+
+    it("should return nil if pattern is longer than string", function()
+      local score, positions = utils.fuzzy_match("configfile", "config")
+      assert.is_nil(score)
+      assert.is_nil(positions)
+    end)
+
+    it("should handle empty pattern", function()
+      local score, positions = utils.fuzzy_match("", "config")
+      assert.are.equal(0, score)
+      assert.are.same({}, positions)
+    end)
+
+    it("should handle empty string", function()
+      local score, positions = utils.fuzzy_match("cfg", "")
+      assert.is_nil(score)
+      assert.is_nil(positions)
+    end)
+
+    it("should give bonus for consecutive matches", function()
+      local score_consecutive, _ = utils.fuzzy_match("con", "config")
+      local score_scattered, _ = utils.fuzzy_match("cfg", "config")
+      assert.is_true(score_consecutive > score_scattered)
+    end)
+
+    it("should give bonus for start of string", function()
+      local score_start, _ = utils.fuzzy_match("con", "config")
+      local score_middle, _ = utils.fuzzy_match("fig", "config")
+      assert.is_true(score_start > score_middle)
+    end)
+
+    it("should match after separators", function()
+      local score, positions = utils.fuzzy_match("fb", "foo_bar")
+      assert.is_not_nil(score)
+      assert.are.same({ 1, 5 }, positions)
+    end)
+
+    it("should match path segments", function()
+      local score, positions = utils.fuzzy_match("ul", "user/local")
+      assert.is_not_nil(score)
+    end)
+  end)
+
+  describe("fuzzy_filter", function()
+    it("should filter and sort by score", function()
+      local items = { "config", "container", "constant", "cfg" }
+      local matches = utils.fuzzy_filter("con", items)
+
+      assert.is_true(#matches >= 2)
+      -- First results should be better matches
+      assert.is_true(matches[1].score >= matches[2].score)
+    end)
+
+    it("should exclude non-matching items", function()
+      local items = { "config", "data", "test" }
+      local matches = utils.fuzzy_filter("cfg", items)
+
+      assert.are.equal(1, #matches)
+      assert.are.equal("config", matches[1].str)
+    end)
+
+    it("should respect limit", function()
+      local items = {}
+      for i = 1, 100 do
+        table.insert(items, "file" .. i)
+      end
+
+      local matches = utils.fuzzy_filter("file", items, 10)
+      assert.are.equal(10, #matches)
+    end)
+
+    it("should return empty for no matches", function()
+      local items = { "aaa", "bbb", "ccc" }
+      local matches = utils.fuzzy_filter("xyz", items)
+      assert.are.equal(0, #matches)
+    end)
+  end)
+
+  describe("prefix_match", function()
+    it("should match prefix", function()
+      assert.is_true(utils.prefix_match("con", "config"))
+    end)
+
+    it("should be case insensitive", function()
+      assert.is_true(utils.prefix_match("CON", "config"))
+    end)
+
+    it("should return false for non-match", function()
+      assert.is_false(utils.prefix_match("xyz", "config"))
+    end)
+
+    it("should return true for empty prefix", function()
+      assert.is_true(utils.prefix_match("", "config"))
+    end)
+  end)
 end)
