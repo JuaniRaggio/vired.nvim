@@ -38,6 +38,12 @@ function M.setup()
     DiredPickerSelection = { bg = "#3e4451" },
     DiredPickerCreate = { fg = "#98c379", italic = true },
     DiredPickerBorder = { link = "FloatBorder" },
+
+    -- Edit mode (wdired)
+    DiredEditChanged = { fg = "#e5c07b", bg = "#3e4451" },
+    DiredEditDeleted = { fg = "#e06c75", strikethrough = true },
+    DiredEditNew = { fg = "#98c379", italic = true },
+    DiredEditMode = { fg = "#c678dd", bold = true },
   }
 
   for name, opts in pairs(highlights) do
