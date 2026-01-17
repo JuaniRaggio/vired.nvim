@@ -105,37 +105,80 @@ end
 ---@param source string|string[] Source path(s)
 ---@param dest string Destination path
 function M.move(source, dest)
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: move not implemented yet", vim.log.levels.INFO)
+  local fs = require("dired.fs")
+  local sources = type(source) == "table" and source or { source }
+
+  for _, src in ipairs(sources) do
+    local ok, err = fs.rename(src, dest)
+    if not ok then
+      vim.notify("dired: " .. err, vim.log.levels.ERROR)
+      return false
+    end
+  end
+  return true
 end
 
 ---Copy file(s) to destination
 ---@param source string|string[] Source path(s)
 ---@param dest string Destination path
 function M.copy(source, dest)
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: copy not implemented yet", vim.log.levels.INFO)
+  local fs = require("dired.fs")
+  local sources = type(source) == "table" and source or { source }
+
+  for _, src in ipairs(sources) do
+    local ok, err = fs.copy(src, dest)
+    if not ok then
+      vim.notify("dired: " .. err, vim.log.levels.ERROR)
+      return false
+    end
+  end
+  return true
 end
 
 ---Delete file(s)
 ---@param path string|string[] Path(s) to delete
 function M.delete(path)
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: delete not implemented yet", vim.log.levels.INFO)
+  local fs = require("dired.fs")
+  local paths = type(path) == "table" and path or { path }
+
+  for _, p in ipairs(paths) do
+    local ok, err
+    if fs.is_dir(p) then
+      ok, err = fs.delete_recursive(p)
+    else
+      ok, err = fs.delete(p)
+    end
+    if not ok then
+      vim.notify("dired: " .. err, vim.log.levels.ERROR)
+      return false
+    end
+  end
+  return true
 end
 
 ---Create directory
 ---@param path string Directory path to create
 function M.mkdir(path)
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: mkdir not implemented yet", vim.log.levels.INFO)
+  local fs = require("dired.fs")
+  local ok, err = fs.mkdir(path)
+  if not ok then
+    vim.notify("dired: " .. err, vim.log.levels.ERROR)
+    return false
+  end
+  return true
 end
 
----Mark a file
+---Mark a file in the current dired buffer
 ---@param path string Path to mark
 function M.mark(path)
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: mark not implemented yet", vim.log.levels.INFO)
+  local buffer = require("dired.buffer")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local buf_data = buffer.buffers[bufnr]
+
+  if buf_data then
+    buf_data.marks[path] = true
+    buffer.render(bufnr)
+  end
 end
 
 ---Unmark a file
