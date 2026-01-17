@@ -25,6 +25,9 @@ function M.setup(opts)
   -- Initialize highlights
   require("dired.highlights").setup()
 
+  -- Initialize projects
+  require("dired.projects").setup()
+
   M._setup_commands()
   M._setup_autocommands()
 
@@ -73,6 +76,7 @@ end
 function M.open(path)
   local utils = require("dired.utils")
   local buffer = require("dired.buffer")
+  local projects = require("dired.projects")
 
   path = path or vim.loop.cwd()
   path = utils.absolute(path)
@@ -88,6 +92,9 @@ function M.open(path)
 
   -- Position cursor on first entry
   vim.api.nvim_win_set_cursor(0, { 2, 0 })
+
+  -- Check if this is a new project and prompt to add
+  projects.check_and_prompt(path)
 end
 
 ---Open path picker for selecting a destination

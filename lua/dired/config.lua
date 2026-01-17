@@ -27,6 +27,11 @@
 ---@field enabled boolean
 ---@field confirm_changes boolean
 
+---@class DiredProjectsConfig
+---@field auto_prompt boolean Prompt to add new projects automatically
+---@field markers string[] Files/directories that indicate a project root
+---@field sort_by "name"|"recent"|"added" Default sort order for projects
+
 ---@class DiredConfig
 ---@field columns string[]
 ---@field path_picker DiredPathPickerConfig
@@ -37,6 +42,7 @@
 ---@field git DiredGitConfig
 ---@field preview DiredPreviewConfig
 ---@field buffer_editing DiredBufferEditConfig
+---@field projects DiredProjectsConfig
 ---@field float DiredFloatConfig
 ---@field keymaps table<string, string>
 
@@ -84,6 +90,26 @@ M.defaults = {
   buffer_editing = {
     enabled = true,
     confirm_changes = true,
+  },
+
+  -- Projects (Projectile-like functionality)
+  projects = {
+    auto_prompt = true, -- Prompt to add new projects when detected
+    markers = {
+      ".git",
+      ".hg",
+      ".svn",
+      "package.json",
+      "Cargo.toml",
+      "go.mod",
+      "Makefile",
+      "CMakeLists.txt",
+      "pyproject.toml",
+      "setup.py",
+      ".project",
+      ".projectile",
+    },
+    sort_by = "recent", -- "name" | "recent" | "added"
   },
 
   -- UI floating windows

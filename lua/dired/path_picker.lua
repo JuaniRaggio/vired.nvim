@@ -147,13 +147,28 @@ sources.buffers = {
   end,
 }
 
----Bookmarks source (placeholder - will be implemented with persistence)
+---Bookmarks/Projects source - bookmarked project directories
 sources.bookmarks = {
   name = "bookmarks",
   icon = "",
   get_items = function(input, cwd)
-    -- TODO: Load from persistent storage
-    return {}
+    local ok, projects = pcall(require, "dired.projects")
+    if not ok then
+      return {}
+    end
+
+    local items = {}
+    local project_paths = projects.list_paths("recent")
+
+    for _, path in ipairs(project_paths) do
+      -- Add trailing slash to indicate directory
+      if path:sub(-1) ~= "/" then
+        path = path .. "/"
+      end
+      table.insert(items, path)
+    end
+
+    return items
   end,
 }
 
