@@ -431,16 +431,27 @@ function M.enter_edit_mode(bufnr, buf_data)
     end,
   })
 
-  -- Set up real-time highlighting on text changes
+  -- Set up real-time highlighting on text changes (debounced for performance)
   local autocmd_id = vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
     buffer = bufnr,
     callback = function()
-      M.update_highlights(bufnr)
+      -- Cancel previous timer if exists
+      if highlight_timers[bufnr] then
+        vim.fn.timer_stop(highlight_timers[bufnr])
+      end
+      -- Schedule debounced highlight update
+      highlight_timers[bufnr] = vim.fn.timer_start(HIGHLIGHT_DEBOUNCE_MS, function()
+        vim.schedule(function()
+          if vim.api.nvim_buf_is_valid(bufnr) and edit_mode[bufnr] then
+            M.update_highlights(bufnr)
+          end
+        end)
+      end)
     end,
   })
   change_autocmds[bufnr] = autocmd_id
 
-  -- Initial highlight update
+  -- Initial highlight update (immediate)
   M.update_highlights(bufnr)
 
   vim.notify("dired: Edit mode enabled. :w to apply, :e! to cancel. Changes highlighted in real-time.", vim.log.levels.INFO)
@@ -456,6 +467,12 @@ local function cleanup_edit_mode(bufnr)
   if change_autocmds[bufnr] then
     pcall(vim.api.nvim_del_autocmd, change_autocmds[bufnr])
     change_autocmds[bufnr] = nil
+  end
+
+  -- Cancel any pending highlight timer
+  if highlight_timers[bufnr] then
+    vim.fn.timer_stop(highlight_timers[bufnr])
+    highlight_timers[bufnr] = nil
   end
 
   -- Clear snapshot
