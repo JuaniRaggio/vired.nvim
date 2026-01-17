@@ -29,6 +29,7 @@
 
 ---@class ViredProjectsConfig
 ---@field auto_prompt boolean Prompt to add new projects automatically
+---@field auto_cd boolean Change Neovim cwd when opening a project
 ---@field markers string[] Files/directories that indicate a project root
 ---@field sort_by "name"|"recent"|"added" Default sort order for projects
 
@@ -102,6 +103,7 @@ M.defaults = {
   -- Projects (Projectile-like functionality)
   projects = {
     auto_prompt = true, -- Prompt to add new projects when detected
+    auto_cd = true, -- Change Neovim cwd when opening a project
     markers = {
       ".git",
       ".hg",

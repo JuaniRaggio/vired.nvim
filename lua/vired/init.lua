@@ -92,6 +92,7 @@ function M.open(path)
   local utils = require("vired.utils")
   local buffer = require("vired.buffer")
   local projects = require("vired.projects")
+  local cfg = config.get()
 
   path = path or vim.loop.cwd()
   path = utils.absolute(path)
@@ -103,6 +104,17 @@ function M.open(path)
 
   -- Ensure we're in normal mode (important when coming from picker)
   vim.cmd("stopinsert")
+
+  -- Auto-cd to project root if enabled
+  if cfg.projects and cfg.projects.auto_cd then
+    local project_root = projects.find_root(path)
+    if project_root then
+      vim.cmd.cd(project_root)
+    else
+      -- Not in a project, cd to the opened directory
+      vim.cmd.cd(path)
+    end
+  end
 
   -- Create buffer and show it
   local bufnr = buffer.create(path)

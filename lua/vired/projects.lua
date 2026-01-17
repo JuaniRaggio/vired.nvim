@@ -466,6 +466,121 @@ end
 -- Commands and UI
 -- ============================================================================
 
+-- ============================================================================
+-- Project Picker UI (Floating Window)
+-- ============================================================================
+
+---@type number|nil Current picker buffer
+local picker_buf = nil
+---@type number|nil Current picker window
+local picker_win = nil
+---@type number|nil Results buffer
+local results_buf = nil
+---@type number|nil Results window
+local results_win = nil
+---@type ViredProject[] Current filtered projects
+local filtered_projects = {}
+---@type number Selected index (1-based)
+local selected_idx = 1
+
+---Close project picker
+local function close_picker()
+  if picker_win and vim.api.nvim_win_is_valid(picker_win) then
+    vim.api.nvim_win_close(picker_win, true)
+  end
+  if results_win and vim.api.nvim_win_is_valid(results_win) then
+    vim.api.nvim_win_close(results_win, true)
+  end
+  if picker_buf and vim.api.nvim_buf_is_valid(picker_buf) then
+    vim.api.nvim_buf_delete(picker_buf, { force = true })
+  end
+  if results_buf and vim.api.nvim_buf_is_valid(results_buf) then
+    vim.api.nvim_buf_delete(results_buf, { force = true })
+  end
+  picker_buf = nil
+  picker_win = nil
+  results_buf = nil
+  results_win = nil
+  filtered_projects = {}
+  selected_idx = 1
+end
+
+---Render results in the results buffer
+local function render_results()
+  if not results_buf or not vim.api.nvim_buf_is_valid(results_buf) then
+    return
+  end
+
+  local lines = {}
+  for i, project in ipairs(filtered_projects) do
+    local prefix = i == selected_idx and "> " or "  "
+    local line = string.format("%s%s", prefix, project.name)
+    table.insert(lines, line)
+  end
+
+  if #lines == 0 then
+    lines = { "  No projects found" }
+  end
+
+  vim.bo[results_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(results_buf, 0, -1, false, lines)
+  vim.bo[results_buf].modifiable = false
+
+  -- Apply highlights
+  local ns = vim.api.nvim_create_namespace("vired_project_picker")
+  vim.api.nvim_buf_clear_namespace(results_buf, ns, 0, -1)
+
+  for i, _ in ipairs(filtered_projects) do
+    if i == selected_idx then
+      vim.api.nvim_buf_add_highlight(results_buf, ns, "Visual", i - 1, 0, -1)
+    end
+  end
+
+  -- Show path in virtual text for selected item
+  if selected_idx >= 1 and selected_idx <= #filtered_projects then
+    local project = filtered_projects[selected_idx]
+    vim.api.nvim_buf_set_extmark(results_buf, ns, selected_idx - 1, 0, {
+      virt_text = { { "  " .. project.path, "Comment" } },
+      virt_text_pos = "eol",
+    })
+  end
+end
+
+---Filter projects based on input
+---@param input string
+local function filter_projects(input)
+  local project_list = M.list("recent")
+  input = input:lower()
+
+  if input == "" then
+    filtered_projects = project_list
+  else
+    filtered_projects = {}
+    for _, project in ipairs(project_list) do
+      local name_lower = project.name:lower()
+      local path_lower = project.path:lower()
+      if name_lower:find(input, 1, true) or path_lower:find(input, 1, true) then
+        table.insert(filtered_projects, project)
+      end
+    end
+  end
+
+  -- Reset selection
+  selected_idx = 1
+  render_results()
+end
+
+---Select current project and open it
+local function select_project()
+  if selected_idx >= 1 and selected_idx <= #filtered_projects then
+    local project = filtered_projects[selected_idx]
+    close_picker()
+    M.touch(project.path)
+    local vired = require("vired")
+    vired.open(project.path)
+  end
+end
+
 ---Open project picker
 function M.pick_project()
   local project_list = M.list("recent")
@@ -475,26 +590,133 @@ function M.pick_project()
     return
   end
 
-  local items = {}
-  for _, project in ipairs(project_list) do
-    table.insert(items, {
-      display = string.format("%s  %s", project.name, project.path),
-      project = project,
-    })
-  end
+  -- Close any existing picker
+  close_picker()
 
-  vim.ui.select(items, {
-    prompt = "Select project:",
-    format_item = function(item)
-      return item.display
+  local cfg = config.get()
+
+  -- Calculate window dimensions
+  local width = math.floor(vim.o.columns * 0.6)
+  local height = math.min(#project_list + 2, 15)
+  local row = math.floor((vim.o.lines - height - 3) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+
+  -- Create input buffer
+  picker_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[picker_buf].buftype = "prompt"
+  vim.bo[picker_buf].bufhidden = "wipe"
+
+  -- Create results buffer
+  results_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[results_buf].buftype = "nofile"
+  vim.bo[results_buf].bufhidden = "wipe"
+  vim.bo[results_buf].modifiable = false
+
+  -- Create input window
+  picker_win = vim.api.nvim_open_win(picker_buf, true, {
+    relative = "editor",
+    width = width,
+    height = 1,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = cfg.float.border,
+    title = " Projects ",
+    title_pos = "center",
+  })
+
+  -- Create results window
+  results_win = vim.api.nvim_open_win(results_buf, false, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row + 3,
+    col = col,
+    style = "minimal",
+    border = cfg.float.border,
+  })
+
+  -- Initialize with all projects
+  filtered_projects = project_list
+  render_results()
+
+  -- Setup prompt
+  vim.fn.prompt_setprompt(picker_buf, " Project: ")
+
+  -- Handle input changes
+  vim.api.nvim_create_autocmd("TextChangedI", {
+    buffer = picker_buf,
+    callback = function()
+      local lines = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)
+      local input = lines[1] or ""
+      -- Remove prompt prefix
+      input = input:gsub("^ Project: ", "")
+      filter_projects(input)
     end,
-  }, function(choice)
-    if choice then
-      M.touch(choice.project.path)
-      local vired = require("vired")
-      vired.open(choice.project.path)
+  })
+
+  -- Keymaps
+  local opts = { buffer = picker_buf, noremap = true, silent = true }
+
+  -- Close on escape
+  vim.keymap.set({ "i", "n" }, "<Esc>", close_picker, opts)
+  vim.keymap.set({ "i", "n" }, "<C-c>", close_picker, opts)
+
+  -- Navigation
+  vim.keymap.set("i", "<C-n>", function()
+    if selected_idx < #filtered_projects then
+      selected_idx = selected_idx + 1
+      render_results()
     end
-  end)
+  end, opts)
+
+  vim.keymap.set("i", "<C-p>", function()
+    if selected_idx > 1 then
+      selected_idx = selected_idx - 1
+      render_results()
+    end
+  end, opts)
+
+  vim.keymap.set("i", "<Down>", function()
+    if selected_idx < #filtered_projects then
+      selected_idx = selected_idx + 1
+      render_results()
+    end
+  end, opts)
+
+  vim.keymap.set("i", "<Up>", function()
+    if selected_idx > 1 then
+      selected_idx = selected_idx - 1
+      render_results()
+    end
+  end, opts)
+
+  -- Select
+  vim.keymap.set("i", "<CR>", select_project, opts)
+  vim.keymap.set("i", "<C-o>", select_project, opts)
+
+  -- Delete project with <C-d>
+  vim.keymap.set("i", "<C-d>", function()
+    if selected_idx >= 1 and selected_idx <= #filtered_projects then
+      local project = filtered_projects[selected_idx]
+      M.remove(project.path)
+      vim.notify(string.format("vired: Removed '%s'", project.name), vim.log.levels.INFO)
+      -- Re-filter to update list
+      local lines = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)
+      local input = (lines[1] or ""):gsub("^ Project: ", "")
+      filter_projects(input)
+    end
+  end, opts)
+
+  -- Start in insert mode
+  vim.cmd("startinsert!")
+
+  -- Close when buffer is wiped
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    buffer = picker_buf,
+    callback = close_picker,
+    once = true,
+  })
 end
 
 ---Add current directory as a project
