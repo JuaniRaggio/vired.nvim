@@ -5,6 +5,7 @@ local utils = require("dired.utils")
 local config = require("dired.config")
 local highlights = require("dired.highlights")
 local git = require("dired.git")
+local undo = require("dired.undo")
 
 ---@class DiredBuffer
 ---@field bufnr number Buffer number
@@ -131,6 +132,12 @@ function M.setup_keymaps(bufnr)
     end,
     ["actions.edit_cancel"] = function()
       M.action_edit_cancel(bufnr)
+    end,
+    ["actions.undo"] = function()
+      M.action_undo(bufnr)
+    end,
+    ["actions.redo"] = function()
+      M.action_redo(bufnr)
     end,
   }
 
@@ -532,7 +539,7 @@ function M.action_move(bufnr)
           target = utils.join(dest, entry.name)
         end
 
-        local ok, err = fs.rename(entry.path, target)
+        local ok, err = undo.rename_with_undo(entry.path, target)
         if not ok then
           vim.notify("dired: " .. err, vim.log.levels.ERROR)
         end
@@ -579,7 +586,7 @@ function M.action_copy(bufnr)
           target = utils.join(dest, entry.name)
         end
 
-        local ok, err = fs.copy(entry.path, target)
+        local ok, err = undo.copy_with_undo(entry.path, target)
         if not ok then
           vim.notify("dired: " .. err, vim.log.levels.ERROR)
         end
@@ -595,24 +602,25 @@ function M.action_delete(bufnr)
     return
   end
 
+  local buf_data = M.buffers[bufnr]
+
   local names = {}
   for _, entry in ipairs(entries) do
     table.insert(names, entry.name)
   end
 
-  local confirm_msg = "Delete " .. #entries .. " file(s)? [" .. table.concat(names, ", ") .. "]"
+  local confirm_msg = "Delete " .. #entries .. " file(s)? [" .. table.concat(names, ", ") .. "] (moved to trash)"
   vim.ui.select({ "Yes", "No" }, { prompt = confirm_msg }, function(choice)
     if choice == "Yes" then
       for _, entry in ipairs(entries) do
-        local ok, err
-        if entry.type == "directory" then
-          ok, err = fs.delete_recursive(entry.path)
-        else
-          ok, err = fs.delete(entry.path)
-        end
+        local ok, err = undo.delete_with_undo(entry.path)
         if not ok then
           vim.notify("dired: " .. err, vim.log.levels.ERROR)
         end
+      end
+      -- Clear marks and refresh
+      if buf_data then
+        buf_data.marks = {}
       end
       M.refresh(bufnr)
     end
@@ -627,7 +635,7 @@ function M.action_mkdir(bufnr)
 
   vim.ui.input({ prompt = "Create directory: ", default = buf_data.path .. "/" }, function(input)
     if input and input ~= "" then
-      local ok, err = fs.mkdir(input)
+      local ok, err = undo.mkdir_with_undo(input)
       if ok then
         M.refresh(bufnr)
       else
@@ -645,7 +653,7 @@ function M.action_touch(bufnr)
 
   vim.ui.input({ prompt = "Create file: ", default = buf_data.path .. "/" }, function(input)
     if input and input ~= "" then
-      local ok, err = fs.touch(input)
+      local ok, err = undo.touch_with_undo(input)
       if ok then
         M.refresh(bufnr)
       else
@@ -697,6 +705,44 @@ function M.action_edit_cancel(bufnr)
   end
 
   edit.cancel_edit_mode(bufnr, buf_data)
+end
+
+---Undo last file operation
+---@param bufnr number
+function M.action_undo(bufnr)
+  if not undo.can_undo() then
+    vim.notify("dired: Nothing to undo", vim.log.levels.INFO)
+    return
+  end
+
+  local desc = undo.peek_undo()
+  local ok, err = undo.undo()
+
+  if ok then
+    vim.notify("dired: Undone: " .. desc, vim.log.levels.INFO)
+    M.refresh(bufnr)
+  else
+    vim.notify("dired: Undo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+  end
+end
+
+---Redo last undone operation
+---@param bufnr number
+function M.action_redo(bufnr)
+  if not undo.can_redo() then
+    vim.notify("dired: Nothing to redo", vim.log.levels.INFO)
+    return
+  end
+
+  local desc = undo.peek_redo()
+  local ok, err = undo.redo()
+
+  if ok then
+    vim.notify("dired: Redone: " .. desc, vim.log.levels.INFO)
+    M.refresh(bufnr)
+  else
+    vim.notify("dired: Redo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+  end
 end
 
 return M

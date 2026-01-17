@@ -136,6 +136,8 @@ M.defaults = {
     ["q"] = "actions.close",
     ["gr"] = "actions.refresh",
     ["i"] = "actions.edit", -- Enter wdired-like edit mode
+    ["<C-z>"] = "actions.undo", -- Undo last file operation
+    ["<C-y>"] = "actions.redo", -- Redo last undone operation
   },
 }
 

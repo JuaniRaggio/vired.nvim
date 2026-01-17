@@ -28,6 +28,9 @@ function M.setup(opts)
   -- Initialize projects
   require("dired.projects").setup()
 
+  -- Initialize undo system
+  require("dired.undo").setup()
+
   M._setup_commands()
   M._setup_autocommands()
 
