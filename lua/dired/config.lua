@@ -38,6 +38,7 @@
 ---@field delete_to_trash boolean
 ---@field confirm_delete boolean
 ---@field skip_confirm_single boolean
+---@field use_picker_by_default boolean
 ---@field lsp DiredLspConfig
 ---@field git DiredGitConfig
 ---@field preview DiredPreviewConfig
@@ -65,6 +66,7 @@ M.defaults = {
   delete_to_trash = true,
   confirm_delete = true,
   skip_confirm_single = true,
+  use_picker_by_default = false, -- If true, :Dired opens picker instead of cwd
 
   -- LSP integration
   lsp = {

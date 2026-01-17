@@ -42,13 +42,26 @@ function M._setup_commands()
   vim.api.nvim_create_user_command("Dired", function(cmd_opts)
     local path = cmd_opts.args
     if path == "" then
-      path = nil
+      -- No argument: check config for default behavior
+      local cfg = config.get()
+      if cfg.use_picker_by_default then
+        M.pick_and_open()
+      else
+        M.open(nil)
+      end
+    else
+      M.open(path)
     end
-    M.open(path)
   end, {
     nargs = "?",
     complete = "dir",
     desc = "Open dired file manager",
+  })
+
+  vim.api.nvim_create_user_command("DiredOpen", function()
+    M.pick_and_open()
+  end, {
+    desc = "Open dired with interactive directory picker",
   })
 end
 
@@ -112,6 +125,32 @@ function M.pick_path(opts)
   opts.cwd = opts.cwd or vim.loop.cwd()
   opts.on_select = opts.on_select or function() end
   path_picker.open(opts)
+end
+
+---Open interactive directory picker, then open dired in selected directory
+---This provides a Vertico-like experience for directory navigation
+function M.pick_and_open()
+  local path_picker = require("dired.path_picker")
+  local cwd = vim.loop.cwd()
+
+  path_picker.open({
+    prompt = "Open directory: ",
+    default = cwd .. "/",
+    cwd = cwd,
+    create_if_missing = true,
+    on_select = function(path)
+      -- path_picker already opens dired for directories via confirm()
+      -- but if somehow we get here with a file, open its parent
+      local fs = require("dired.fs")
+      if fs.is_file(path) then
+        local utils = require("dired.utils")
+        path = utils.parent(path)
+      end
+      if path then
+        M.open(path)
+      end
+    end,
+  })
 end
 
 ---Move file(s) to destination
