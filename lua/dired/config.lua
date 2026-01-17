@@ -23,6 +23,10 @@
 ---@field max_file_size number
 ---@field auto_preview boolean
 
+---@class DiredBufferEditConfig
+---@field enabled boolean
+---@field confirm_changes boolean
+
 ---@class DiredConfig
 ---@field columns string[]
 ---@field path_picker DiredPathPickerConfig
@@ -32,6 +36,7 @@
 ---@field lsp DiredLspConfig
 ---@field git DiredGitConfig
 ---@field preview DiredPreviewConfig
+---@field buffer_editing DiredBufferEditConfig
 ---@field float DiredFloatConfig
 ---@field keymaps table<string, string>
 
@@ -75,6 +80,12 @@ M.defaults = {
     auto_preview = false,
   },
 
+  -- Buffer editing (wdired-like mode)
+  buffer_editing = {
+    enabled = true,
+    confirm_changes = true,
+  },
+
   -- UI floating windows
   float = {
     border = "rounded",
@@ -98,6 +109,7 @@ M.defaults = {
     ["<Tab>"] = "actions.preview",
     ["q"] = "actions.close",
     ["gr"] = "actions.refresh",
+    ["i"] = "actions.edit", -- Enter wdired-like edit mode
   },
 }
 
