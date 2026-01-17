@@ -18,6 +18,11 @@
 ---@field width number
 ---@field height number
 
+---@class DiredPreviewConfig
+---@field max_lines number
+---@field max_file_size number
+---@field auto_preview boolean
+
 ---@class DiredConfig
 ---@field columns string[]
 ---@field path_picker DiredPathPickerConfig
@@ -26,6 +31,7 @@
 ---@field skip_confirm_single boolean
 ---@field lsp DiredLspConfig
 ---@field git DiredGitConfig
+---@field preview DiredPreviewConfig
 ---@field float DiredFloatConfig
 ---@field keymaps table<string, string>
 
@@ -60,6 +66,13 @@ M.defaults = {
     auto_add = false,
     use_git_mv = true,
     use_git_rm = true,
+  },
+
+  -- Preview settings
+  preview = {
+    max_lines = 100,
+    max_file_size = 1024 * 1024, -- 1MB
+    auto_preview = false,
   },
 
   -- UI floating windows
