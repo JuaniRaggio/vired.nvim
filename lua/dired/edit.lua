@@ -24,8 +24,12 @@ local edit_mode = {}
 ---@type table<number, number> Buffer -> autocmd ID for TextChanged
 local change_autocmds = {}
 
+---@type table<number, number> Buffer -> timer for debounced highlights
+local highlight_timers = {}
+
 local HEADER_LINES = 1
 local EDIT_NS = vim.api.nvim_create_namespace("dired_edit")
+local HIGHLIGHT_DEBOUNCE_MS = 100 -- Debounce highlight updates for performance
 
 -- ============================================================================
 -- Line Parsing
@@ -75,84 +79,108 @@ function M.parse_line_name(line, columns)
     return nil, nil
   end
 
-  -- Skip header-like lines
+  -- Skip header-like lines (start with spaces followed by /)
   if line:match("^%s+/") then
     return nil, nil
   end
 
-  -- The name is at the end. We need to find where it starts.
-  -- Strategy: work backwards from the end of the line
-  --
-  -- The line format is:
-  -- [mark] [git] [col1] [col2] ... [name]
-  --
-  -- We know the last column before name is mtime (YYYY-MM-DD) or size or permissions
-  -- depending on config. The name always comes last.
+  -- Skip empty or whitespace-only lines
+  if line:match("^%s*$") then
+    return nil, nil
+  end
 
-  -- For simplicity, we'll find the name by counting expected column widths
-  local estimated_start = calculate_name_start(columns)
+  local name_part = nil
 
-  -- But the actual icon width varies, so we need a smarter approach
-  -- Let's find the last column value and extract after it
-
-  -- If mtime is in columns, find the date pattern
+  -- Strategy 1: If mtime is in columns, find YYYY-MM-DD pattern
   if vim.tbl_contains(columns, "mtime") then
-    -- Find YYYY-MM-DD pattern and extract after it
-    local date_end = line:find("%d%d%d%d%-%d%d%-%d%d")
-    if date_end then
-      -- Find the end of the date
-      local _, date_finish = line:find("%d%d%d%d%-%d%d%-%d%d")
-      if date_finish then
-        local name_part = line:sub(date_finish + 2) -- +2 for space after date
-        if name_part and name_part ~= "" then
-          local name = name_part
-          local entry_type = "file"
+    local _, date_finish = line:find("%d%d%d%d%-%d%d%-%d%d")
+    if date_finish then
+      name_part = line:sub(date_finish + 2) -- +2 for space after date
+    end
+  end
 
-          -- Check if directory (ends with /)
-          if name:sub(-1) == "/" then
-            name = name:sub(1, -2)
-            entry_type = "directory"
-          -- Check if symlink (contains " -> ")
-          elseif name:find(" -> ", 1, true) then
-            local arrow_pos = name:find(" -> ", 1, true)
-            name = name:sub(1, arrow_pos - 1)
-            entry_type = "link"
-          end
-
-          return name, entry_type
+  -- Strategy 2: If size is in columns but not mtime, find size pattern
+  if not name_part and vim.tbl_contains(columns, "size") then
+    -- Size format: right-aligned, like "  1.2K" or "    -" or " 123B"
+    -- Look for patterns after permissions if present
+    if vim.tbl_contains(columns, "permissions") then
+      -- Find permissions pattern (10 chars like drwxr-xr-x or -rw-r--r--)
+      local _, perm_end = line:find("[d%-l][rwx%-][rwx%-][rwx%-][rwx%-][rwx%-][rwx%-][rwx%-][rwx%-][rwx%-]")
+      if perm_end then
+        -- After permissions comes size (6 chars) then name
+        local after_perm = line:sub(perm_end + 1)
+        -- Skip whitespace and size column
+        local _, size_end = after_perm:find("^%s*[%d%.%-]+[BKMGTP]?%s*")
+        if size_end then
+          name_part = after_perm:sub(size_end + 1)
+        else
+          -- Try simpler: skip next word
+          name_part = after_perm:match("^%s*%S+%s+(.+)$")
         end
       end
     end
   end
 
-  -- Fallback: if mtime not in columns, try to find after size
-  if vim.tbl_contains(columns, "size") then
-    -- Size is right-aligned, look for pattern like "  1.2K " or "    - "
-    -- This is harder, let's try a different approach
-  end
-
-  -- Ultimate fallback: split by multiple spaces and take last meaningful part
-  -- This works because columns are separated by single spaces
-  local parts = {}
-  for part in line:gmatch("%S+") do
-    table.insert(parts, part)
-  end
-
-  if #parts > 0 then
-    -- The last part(s) form the name. Names can have spaces so this is imperfect.
-    -- For now, assume no spaces in filenames for basic operation
-    local name = parts[#parts]
-    local entry_type = "file"
-
-    if name:sub(-1) == "/" then
-      name = name:sub(1, -2)
-      entry_type = "directory"
+  -- Strategy 3: Fallback - take content after known column widths
+  if not name_part then
+    local start_col = calculate_name_start(columns)
+    if start_col < #line then
+      name_part = line:sub(start_col + 1)
     end
-
-    return name, entry_type
   end
 
-  return nil, nil
+  -- Strategy 4: Ultimate fallback - split and reconstruct
+  if not name_part or name_part == "" then
+    local parts = {}
+    for part in line:gmatch("%S+") do
+      table.insert(parts, part)
+    end
+    -- Skip known column parts (mark, git, icon, etc) and take the rest
+    -- This is imprecise but better than nothing
+    if #parts > 4 then
+      -- Assume at least 4 parts are columns, rest is name
+      local name_parts = {}
+      for i = 5, #parts do
+        table.insert(name_parts, parts[i])
+      end
+      name_part = table.concat(name_parts, " ")
+    elseif #parts > 0 then
+      name_part = parts[#parts]
+    end
+  end
+
+  if not name_part or name_part == "" then
+    return nil, nil
+  end
+
+  -- Clean up leading/trailing whitespace
+  name_part = name_part:match("^%s*(.-)%s*$")
+
+  if not name_part or name_part == "" then
+    return nil, nil
+  end
+
+  -- Determine entry type and extract name
+  local name = name_part
+  local entry_type = "file"
+
+  -- Check if directory (ends with /)
+  if name:sub(-1) == "/" then
+    name = name:sub(1, -2)
+    entry_type = "directory"
+  -- Check if symlink (contains " -> ")
+  elseif name:find(" -> ", 1, true) then
+    local arrow_pos = name:find(" -> ", 1, true)
+    name = name:sub(1, arrow_pos - 1)
+    entry_type = "link"
+  end
+
+  -- Handle edge cases
+  if name == "" then
+    return nil, nil
+  end
+
+  return name, entry_type
 end
 
 ---Parse a line more robustly by matching against known entry
@@ -612,63 +640,197 @@ function M.show_diff_preview(bufnr)
   return preview_buf, preview_win
 end
 
+---Validate an operation before executing
+---@param op DiredEditOperation
+---@return boolean valid, string|nil error
+local function validate_operation(op)
+  if op.type == "rename" then
+    -- Check source exists
+    if not utils.exists(op.source) then
+      return false, string.format("Source does not exist: %s", utils.basename(op.source))
+    end
+    -- Check destination doesn't exist (unless overwriting)
+    if utils.exists(op.dest) then
+      return false, string.format("Destination already exists: %s", utils.basename(op.dest))
+    end
+    -- Check destination directory exists
+    local dest_parent = utils.parent(op.dest)
+    if not utils.exists(dest_parent) then
+      return false, string.format("Destination directory does not exist: %s", dest_parent)
+    end
+    -- Check for invalid characters in new name
+    local new_name = utils.basename(op.dest)
+    if new_name:match("[/\0]") then
+      return false, string.format("Invalid characters in filename: %s", new_name)
+    end
+
+  elseif op.type == "delete" then
+    -- Check source exists
+    if not utils.exists(op.source) then
+      return false, string.format("File does not exist: %s", utils.basename(op.source))
+    end
+
+  elseif op.type == "create" then
+    -- Check destination doesn't exist
+    if utils.exists(op.dest) then
+      return false, string.format("File already exists: %s", utils.basename(op.dest))
+    end
+    -- Check parent directory exists
+    local dest_parent = utils.parent(op.dest)
+    if not utils.exists(dest_parent) then
+      return false, string.format("Parent directory does not exist: %s", dest_parent)
+    end
+    -- Check for invalid characters
+    local new_name = utils.basename(op.dest)
+    if new_name:match("[/\0]") then
+      return false, string.format("Invalid characters in filename: %s", new_name)
+    end
+  end
+
+  return true, nil
+end
+
 ---Execute filesystem operations
 ---@param bufnr number
 ---@param buf_data table
 ---@param operations DiredEditOperation[]
 function M.execute_operations(bufnr, buf_data, operations)
   local errors = {}
+  local warnings = {}
+  local successful = 0
   local lsp = require("dired.lsp")
-  local cfg = config.get()
+  local cfg = config.get() or {}
+
+  -- Validate all operations first
+  for _, op in ipairs(operations) do
+    local valid, err = validate_operation(op)
+    if not valid then
+      table.insert(warnings, err)
+    end
+  end
+
+  -- Show warnings if any
+  if #warnings > 0 then
+    vim.notify("dired: Validation warnings:\n" .. table.concat(warnings, "\n"), vim.log.levels.WARN)
+  end
 
   for _, op in ipairs(operations) do
     local ok, err
+    local op_name = utils.basename(op.source or op.dest or "unknown")
 
     if op.type == "rename" then
+      -- Skip if source doesn't exist anymore (might have been renamed already)
+      if not utils.exists(op.source) then
+        table.insert(errors, string.format("Rename skipped (source gone): %s", op_name))
+        goto continue
+      end
+
       -- Try LSP rename first if enabled
-      if cfg.lsp.enabled then
+      if cfg.lsp and cfg.lsp.enabled then
         lsp.will_rename_files(op.source, op.dest, function(lsp_ok)
           -- Continue with filesystem rename regardless of LSP result
         end)
       end
 
       -- Use git mv if in git repo and configured
-      if buf_data.git_root and cfg.git.use_git_mv then
+      if buf_data.git_root and cfg.git and cfg.git.use_git_mv then
         ok, err = M.git_mv(op.source, op.dest)
+        if not ok then
+          err = string.format("git mv failed for '%s': %s", op_name, err or "unknown")
+        end
       else
         ok, err = fs.rename(op.source, op.dest)
+        if not ok then
+          err = string.format("Rename failed for '%s': %s", op_name, err or "permission denied or invalid path")
+        end
+      end
+
+      -- Notify LSP after rename
+      if ok and cfg.lsp and cfg.lsp.enabled then
+        lsp.did_rename_files(op.source, op.dest)
       end
 
     elseif op.type == "delete" then
+      -- Skip if already deleted
+      if not utils.exists(op.source) then
+        table.insert(warnings, string.format("Already deleted: %s", op_name))
+        goto continue
+      end
+
+      -- Check if it's a directory
+      local stat = vim.loop.fs_stat(op.source)
+      local is_dir = stat and stat.type == "directory"
+
       -- Use git rm if in git repo and configured
-      if buf_data.git_root and cfg.git.use_git_rm then
+      if buf_data.git_root and cfg.git and cfg.git.use_git_rm then
         ok, err = M.git_rm(op.source)
+        if not ok then
+          err = string.format("git rm failed for '%s': %s", op_name, err or "unknown")
+        end
       else
-        ok, err = fs.delete(op.source)
+        if is_dir then
+          ok, err = fs.delete_recursive(op.source)
+        else
+          ok, err = fs.delete(op.source)
+        end
+        if not ok then
+          err = string.format("Delete failed for '%s': %s", op_name, err or "permission denied")
+        end
+      end
+
+      -- Notify LSP after delete
+      if ok and cfg.lsp and cfg.lsp.enabled then
+        lsp.did_delete_files(op.source)
       end
 
     elseif op.type == "create" then
+      -- Skip if already exists
+      if utils.exists(op.dest) then
+        table.insert(warnings, string.format("Already exists: %s", utils.basename(op.dest)))
+        goto continue
+      end
+
       -- Create as file by default, directory if ends with /
       if op.dest:sub(-1) == "/" then
         ok, err = fs.mkdir(op.dest:sub(1, -2))
+        if not ok then
+          err = string.format("Create directory failed for '%s': %s", utils.basename(op.dest), err or "permission denied")
+        end
       else
         ok, err = fs.touch(op.dest)
+        if not ok then
+          err = string.format("Create file failed for '%s': %s", utils.basename(op.dest), err or "permission denied")
+        end
+      end
+
+      -- Notify LSP after create
+      if ok and cfg.lsp and cfg.lsp.enabled then
+        lsp.did_create_files(op.dest)
       end
     end
 
-    if not ok then
-      table.insert(errors, string.format("%s: %s", op.type, err or "unknown error"))
+    if ok then
+      successful = successful + 1
+    elseif err then
+      table.insert(errors, err)
     end
+
+    ::continue::
   end
 
   -- Exit edit mode
   M.exit_edit_mode(bufnr, buf_data)
 
-  -- Report errors
+  -- Report results
   if #errors > 0 then
-    vim.notify("dired: Some operations failed:\n" .. table.concat(errors, "\n"), vim.log.levels.ERROR)
+    vim.notify(
+      string.format("dired: %d of %d operations failed:\n%s", #errors, #operations, table.concat(errors, "\n")),
+      vim.log.levels.ERROR
+    )
+  elseif successful > 0 then
+    vim.notify(string.format("dired: Successfully applied %d operation(s)", successful), vim.log.levels.INFO)
   else
-    vim.notify(string.format("dired: Applied %d operation(s)", #operations), vim.log.levels.INFO)
+    vim.notify("dired: No operations were applied", vim.log.levels.WARN)
   end
 end
 
