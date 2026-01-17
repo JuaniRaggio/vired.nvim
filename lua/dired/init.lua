@@ -97,8 +97,11 @@ end
 ---@field on_select? function Callback when path is selected
 ---@field create_if_missing? boolean Offer to create non-existent paths
 function M.pick_path(opts)
-  -- TODO: Implement in Phase 2
-  vim.notify("dired: path picker not implemented yet", vim.log.levels.INFO)
+  local path_picker = require("dired.path_picker")
+  opts = opts or {}
+  opts.cwd = opts.cwd or vim.loop.cwd()
+  opts.on_select = opts.on_select or function() end
+  path_picker.open(opts)
 end
 
 ---Move file(s) to destination
@@ -181,24 +184,42 @@ function M.mark(path)
   end
 end
 
----Unmark a file
+---Unmark a file in the current dired buffer
 ---@param path string Path to unmark
 function M.unmark(path)
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: unmark not implemented yet", vim.log.levels.INFO)
+  local buffer = require("dired.buffer")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local buf_data = buffer.buffers[bufnr]
+
+  if buf_data then
+    buf_data.marks[path] = nil
+    buffer.render(bufnr)
+  end
 end
 
----Get all marked files
+---Get all marked files in the current dired buffer
 ---@return string[] List of marked paths
 function M.get_marked()
-  -- TODO: Implement in Phase 3
-  return {}
+  local buffer = require("dired.buffer")
+  local bufnr = vim.api.nvim_get_current_buf()
+  local buf_data = buffer.buffers[bufnr]
+
+  if not buf_data then
+    return {}
+  end
+
+  local marked = {}
+  for path, _ in pairs(buf_data.marks) do
+    table.insert(marked, path)
+  end
+  return marked
 end
 
----Clear all marks
+---Clear all marks in the current dired buffer
 function M.clear_marks()
-  -- TODO: Implement in Phase 3
-  vim.notify("dired: clear_marks not implemented yet", vim.log.levels.INFO)
+  local buffer = require("dired.buffer")
+  local bufnr = vim.api.nvim_get_current_buf()
+  buffer.unmark_all(bufnr)
 end
 
 return M
