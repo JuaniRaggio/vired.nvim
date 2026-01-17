@@ -6,6 +6,11 @@
 ---@field on_cancel? fun() Callback when cancelled
 ---@field create_if_missing? boolean Offer to create non-existent paths
 
+---@class PathPickerSource
+---@field name string Source identifier
+---@field icon string Icon to display
+---@field get_items fun(input: string, cwd: string): string[] Function to get items
+
 local M = {}
 
 local fs = require("dired.fs")
@@ -23,59 +28,236 @@ local results_win = nil
 
 ---@type PathPickerOpts|nil Current picker options
 local picker_opts = nil
----@type string[] Current completion results
+---@type table[] Current completion results {str, score, positions, source}
 local results = {}
 ---@type number Selected result index (1-based)
 local selected_idx = 1
 
----Get completions for a path
+-- ============================================================================
+-- Sources
+-- ============================================================================
+
+---@type table<string, PathPickerSource>
+local sources = {}
+
+---Register a source
+---@param name string
+---@param source PathPickerSource
+function M.register_source(name, source)
+  sources[name] = source
+end
+
+---Filesystem source - directories in current path
+sources.filesystem = {
+  name = "filesystem",
+  icon = "",
+  get_items = function(input, cwd)
+    local items = {}
+
+    -- Expand and normalize input
+    local path = utils.expand(input)
+    if not utils.is_absolute(path) then
+      path = utils.join(cwd, path)
+    end
+
+    local dir, prefix
+    if input:sub(-1) == "/" then
+      dir = path
+      prefix = ""
+    else
+      dir = utils.parent(path)
+      prefix = utils.basename(path)
+    end
+
+    if not fs.exists(dir) then
+      return items
+    end
+
+    local entries, _ = fs.readdir(dir, config.get().path_picker.show_hidden)
+    if not entries then
+      return items
+    end
+
+    for _, entry in ipairs(entries) do
+      local item_path = utils.join(dir, entry.name)
+      if entry.type == "directory" then
+        item_path = item_path .. "/"
+      end
+      table.insert(items, item_path)
+    end
+
+    return items
+  end,
+}
+
+---Recent directories source - from oldfiles
+sources.recent = {
+  name = "recent",
+  icon = "",
+  get_items = function(input, cwd)
+    local items = {}
+    local seen = {}
+
+    -- Get directories from oldfiles
+    local oldfiles = vim.v.oldfiles or {}
+    for _, file in ipairs(oldfiles) do
+      local dir = utils.parent(file)
+      if dir and not seen[dir] and fs.is_dir(dir) then
+        seen[dir] = true
+        table.insert(items, dir .. "/")
+        if #items >= 50 then
+          break
+        end
+      end
+    end
+
+    return items
+  end,
+}
+
+---Buffers source - directories of open buffers
+sources.buffers = {
+  name = "buffers",
+  icon = "",
+  get_items = function(input, cwd)
+    local items = {}
+    local seen = {}
+
+    local bufs = vim.api.nvim_list_bufs()
+    for _, buf in ipairs(bufs) do
+      if vim.api.nvim_buf_is_loaded(buf) then
+        local name = vim.api.nvim_buf_get_name(buf)
+        if name and name ~= "" then
+          local dir = utils.parent(name)
+          if dir and not seen[dir] and fs.is_dir(dir) then
+            seen[dir] = true
+            table.insert(items, dir .. "/")
+          end
+        end
+      end
+    end
+
+    return items
+  end,
+}
+
+---Bookmarks source (placeholder - will be implemented with persistence)
+sources.bookmarks = {
+  name = "bookmarks",
+  icon = "",
+  get_items = function(input, cwd)
+    -- TODO: Load from persistent storage
+    return {}
+  end,
+}
+
+-- ============================================================================
+-- Fuzzy Matching Integration
+-- ============================================================================
+
+---Get completions from all enabled sources with fuzzy matching
 ---@param input string Current input
 ---@param cwd string Working directory
----@return string[] completions
+---@return table[] results {str, score, positions, source}
 local function get_completions(input, cwd)
-  local completions = {}
+  local cfg = config.get()
+  local enabled_sources = cfg.path_picker.sources or { "filesystem" }
+  local all_items = {}
 
-  -- Expand and normalize input
-  local path = utils.expand(input)
-  if not utils.is_absolute(path) then
-    path = utils.join(cwd, path)
-  end
-
-  local dir, prefix
-  if input:sub(-1) == "/" then
-    -- Input ends with /, list contents of that directory
-    dir = path
-    prefix = ""
-  else
-    -- Get parent directory and filter by prefix
-    dir = utils.parent(path)
-    prefix = utils.basename(path):lower()
-  end
-
-  if not fs.exists(dir) then
-    return completions
-  end
-
-  -- Read directory contents
-  local entries, err = fs.readdir(dir, config.get().path_picker.show_hidden)
-  if err then
-    return completions
-  end
-
-  for _, entry in ipairs(entries) do
-    local name_lower = entry.name:lower()
-
-    -- Filter by prefix (simple prefix matching for v1)
-    if prefix == "" or name_lower:sub(1, #prefix) == prefix then
-      local completion = utils.join(dir, entry.name)
-      if entry.type == "directory" then
-        completion = completion .. "/"
+  -- Gather items from all sources
+  for _, source_name in ipairs(enabled_sources) do
+    local source = sources[source_name]
+    if source then
+      local items = source.get_items(input, cwd)
+      for _, item in ipairs(items) do
+        table.insert(all_items, { path = item, source = source_name })
       end
-      table.insert(completions, completion)
     end
   end
 
+  -- Extract search pattern from input
+  local pattern = ""
+  if input:sub(-1) ~= "/" then
+    pattern = utils.basename(input)
+  end
+
+  -- If no pattern, return filesystem items sorted
+  if pattern == "" then
+    local completions = {}
+    for _, item in ipairs(all_items) do
+      if item.source == "filesystem" then
+        table.insert(completions, {
+          str = item.path,
+          score = 0,
+          positions = {},
+          source = item.source,
+        })
+      end
+    end
+    -- Sort directories first, then alphabetically
+    table.sort(completions, function(a, b)
+      local a_is_dir = a.str:sub(-1) == "/"
+      local b_is_dir = b.str:sub(-1) == "/"
+      if a_is_dir and not b_is_dir then
+        return true
+      elseif not a_is_dir and b_is_dir then
+        return false
+      end
+      return a.str < b.str
+    end)
+    return completions
+  end
+
+  -- Apply fuzzy matching
+  local completions = {}
+  for _, item in ipairs(all_items) do
+    -- Match against basename for filesystem, full path for others
+    local match_str = item.source == "filesystem" and utils.basename(item.path) or item.path
+    local score, positions = utils.fuzzy_match(pattern, match_str)
+
+    if score then
+      -- Boost score for filesystem source (prioritize current directory)
+      if item.source == "filesystem" then
+        score = score + 10
+      end
+
+      table.insert(completions, {
+        str = item.path,
+        score = score,
+        positions = positions,
+        source = item.source,
+      })
+    end
+  end
+
+  -- Sort by score descending
+  table.sort(completions, function(a, b)
+    return a.score > b.score
+  end)
+
+  -- Limit results
+  local limit = 20
+  if #completions > limit then
+    local limited = {}
+    for i = 1, limit do
+      limited[i] = completions[i]
+    end
+    return limited
+  end
+
   return completions
+end
+
+-- ============================================================================
+-- UI Rendering
+-- ============================================================================
+
+---Get source icon
+---@param source_name string
+---@return string
+local function get_source_icon(source_name)
+  local source = sources[source_name]
+  return source and source.icon or ""
 end
 
 ---Render the results window
@@ -85,11 +267,40 @@ local function render_results()
   end
 
   local lines = {}
-  local cfg = config.get()
+  local highlights = {}
 
   for i, result in ipairs(results) do
     local prefix = i == selected_idx and "> " or "  "
-    table.insert(lines, prefix .. result)
+    local icon = get_source_icon(result.source)
+    local line = prefix .. icon .. " " .. result.str
+
+    table.insert(lines, line)
+
+    -- Highlight matched characters
+    if result.positions and #result.positions > 0 then
+      local offset = #prefix + #icon + 1 -- account for prefix and icon
+      -- Adjust positions for the basename display in the full path
+      local basename_start = result.str:find(utils.basename(result.str:gsub("/$", "")), 1, true) or 1
+      for _, pos in ipairs(result.positions) do
+        local col = offset + basename_start + pos - 2
+        table.insert(highlights, {
+          line = i - 1,
+          col = col,
+          end_col = col + 1,
+          hl = "DiredPickerMatch",
+        })
+      end
+    end
+
+    -- Highlight selected line
+    if i == selected_idx then
+      table.insert(highlights, {
+        line = i - 1,
+        col = 0,
+        end_col = #line,
+        hl = "DiredPickerSelection",
+      })
+    end
   end
 
   -- Add "create" option if path doesn't exist
@@ -101,12 +312,25 @@ local function render_results()
     end
 
     if input ~= "" and not fs.exists(path) then
-      local create_line = "  [Create: " .. path .. "]"
+      local create_idx = #lines + 1
+      local prefix = create_idx == selected_idx and "> " or "  "
+      local create_line = prefix .. " [Create: " .. path .. "]"
       table.insert(lines, create_line)
-      -- If no results and we have a create option, select it
-      if #results == 0 then
-        selected_idx = 1
-        lines[1] = "> " .. lines[1]:sub(3)
+
+      table.insert(highlights, {
+        line = create_idx - 1,
+        col = 0,
+        end_col = #create_line,
+        hl = "DiredPickerCreate",
+      })
+
+      if create_idx == selected_idx then
+        table.insert(highlights, {
+          line = create_idx - 1,
+          col = 0,
+          end_col = #create_line,
+          hl = "DiredPickerSelection",
+        })
       end
     end
   end
@@ -115,23 +339,20 @@ local function render_results()
     lines = { "  (no matches)" }
   end
 
+  vim.bo[results_buf].modifiable = true
   vim.api.nvim_buf_set_lines(results_buf, 0, -1, false, lines)
+  vim.bo[results_buf].modifiable = false
 
   -- Apply highlights
   local ns = vim.api.nvim_create_namespace("dired_picker")
   vim.api.nvim_buf_clear_namespace(results_buf, ns, 0, -1)
 
-  for i, line in ipairs(lines) do
-    if line:sub(1, 1) == ">" then
-      vim.api.nvim_buf_add_highlight(results_buf, ns, "DiredPickerSelection", i - 1, 0, -1)
-    end
-    if line:match("%[Create:") then
-      vim.api.nvim_buf_add_highlight(results_buf, ns, "DiredPickerCreate", i - 1, 0, -1)
-    end
+  for _, hl in ipairs(highlights) do
+    pcall(vim.api.nvim_buf_add_highlight, results_buf, ns, hl.hl, hl.line, hl.col, hl.end_col)
   end
 
   -- Resize results window based on content
-  local height = math.min(#lines, 10)
+  local height = math.min(#lines, 15)
   if results_win and vim.api.nvim_win_is_valid(results_win) then
     vim.api.nvim_win_set_height(results_win, height)
   end
@@ -152,18 +373,34 @@ local function update_completions()
   render_results()
 end
 
----Select next result
-local function select_next()
+-- ============================================================================
+-- Navigation
+-- ============================================================================
+
+---Get total number of selectable items (including create option)
+---@return number
+local function get_max_idx()
   local max_idx = #results
-  if picker_opts and picker_opts.create_if_missing then
+
+  if picker_opts and picker_opts.create_if_missing and picker_buf then
     local input = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)[1] or ""
     local path = utils.expand(input)
     if not utils.is_absolute(path) and picker_opts.cwd then
       path = utils.join(picker_opts.cwd, path)
     end
     if input ~= "" and not fs.exists(path) then
-      max_idx = max_idx + 1 -- For "create" option
+      max_idx = max_idx + 1
     end
+  end
+
+  return max_idx
+end
+
+---Select next result
+local function select_next()
+  local max_idx = get_max_idx()
+  if max_idx == 0 then
+    return
   end
 
   if selected_idx < max_idx then
@@ -176,16 +413,9 @@ end
 
 ---Select previous result
 local function select_prev()
-  local max_idx = #results
-  if picker_opts and picker_opts.create_if_missing then
-    local input = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)[1] or ""
-    local path = utils.expand(input)
-    if not utils.is_absolute(path) and picker_opts.cwd then
-      path = utils.join(picker_opts.cwd, path)
-    end
-    if input ~= "" and not fs.exists(path) then
-      max_idx = max_idx + 1
-    end
+  local max_idx = get_max_idx()
+  if max_idx == 0 then
+    return
   end
 
   if selected_idx > 1 then
@@ -198,17 +428,17 @@ end
 
 ---Complete with selected result
 local function complete_selected()
-  if not picker_buf or #results == 0 then
+  if not picker_buf or #results == 0 or selected_idx > #results then
     return
   end
 
-  if selected_idx <= #results then
-    local selected = results[selected_idx]
-    vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { selected })
-    -- Move cursor to end
-    vim.api.nvim_win_set_cursor(picker_win, { 1, #selected })
-    update_completions()
+  local selected = results[selected_idx]
+  vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { selected.str })
+  -- Move cursor to end
+  if picker_win and vim.api.nvim_win_is_valid(picker_win) then
+    vim.api.nvim_win_set_cursor(picker_win, { 1, #selected.str })
   end
+  update_completions()
 end
 
 ---Confirm selection
@@ -230,7 +460,6 @@ local function confirm()
     -- Confirm creation
     vim.ui.select({ "Yes", "No" }, { prompt = "Create " .. path .. "?" }, function(choice)
       if choice == "Yes" then
-        -- Determine if it's a file or directory
         local is_dir = path:sub(-1) == "/"
         local ok, err
         if is_dir then
@@ -240,16 +469,18 @@ local function confirm()
         end
 
         if ok then
+          local on_select = picker_opts.on_select
           M.close()
-          picker_opts.on_select(path)
+          on_select(path)
         else
           vim.notify("dired: " .. err, vim.log.levels.ERROR)
         end
       end
     end)
   else
+    local on_select = picker_opts.on_select
     M.close()
-    picker_opts.on_select(path)
+    on_select(path)
   end
 end
 
@@ -261,6 +492,10 @@ local function cancel()
     on_cancel()
   end
 end
+
+-- ============================================================================
+-- Public API
+-- ============================================================================
 
 ---Close the picker
 function M.close()
@@ -301,14 +536,13 @@ function M.open(opts)
   -- Calculate window dimensions
   local width = math.floor(vim.o.columns * 0.6)
   local height = 1
-  local results_height = 10
+  local results_height = 15
   local row = math.floor((vim.o.lines - height - results_height - 4) / 2)
   local col = math.floor((vim.o.columns - width) / 2)
 
   -- Create input buffer
   picker_buf = vim.api.nvim_create_buf(false, true)
-  vim.bo[picker_buf].buftype = "prompt"
-  vim.fn.prompt_setprompt(picker_buf, "")
+  vim.bo[picker_buf].buftype = "nofile"
 
   -- Set initial value
   local default = opts.default or opts.cwd .. "/"
@@ -344,7 +578,7 @@ function M.open(opts)
     border = cfg.float.border,
   })
 
-  -- Setup keymaps
+  -- Setup keymaps for insert mode
   local kopts = { buffer = picker_buf, noremap = true, silent = true }
 
   vim.keymap.set("i", "<CR>", confirm, kopts)
@@ -360,11 +594,15 @@ function M.open(opts)
   vim.keymap.set("n", "<CR>", confirm, kopts)
   vim.keymap.set("n", "<Esc>", cancel, kopts)
   vim.keymap.set("n", "q", cancel, kopts)
+  vim.keymap.set("n", "<Tab>", complete_selected, kopts)
+  vim.keymap.set("n", "j", select_next, kopts)
+  vim.keymap.set("n", "k", select_prev, kopts)
 
-  -- Auto-update on text change
+  -- Auto-update on text change with debounce
+  local debounced_update = utils.debounce(update_completions, 50)
   vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
     buffer = picker_buf,
-    callback = utils.debounce(update_completions, 50),
+    callback = debounced_update,
   })
 
   -- Close on buffer leave
@@ -382,6 +620,12 @@ function M.open(opts)
 
   -- Initial completions
   update_completions()
+end
+
+---Get registered sources
+---@return table<string, PathPickerSource>
+function M.get_sources()
+  return sources
 end
 
 return M
