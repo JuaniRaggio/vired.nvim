@@ -72,6 +72,7 @@ end
 ---@param path? string Directory path (defaults to cwd)
 function M.open(path)
   local utils = require("dired.utils")
+  local buffer = require("dired.buffer")
 
   path = path or vim.loop.cwd()
   path = utils.absolute(path)
