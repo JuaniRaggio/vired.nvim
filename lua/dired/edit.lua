@@ -527,15 +527,15 @@ function M.apply_changes(bufnr)
 
   -- Show confirmation
   local summary = M.format_operations_summary(operations)
-  vim.ui.select({ "Apply", "Cancel" }, {
+  utils.confirm({
     prompt = "Apply changes?\n" .. summary,
-  }, function(choice)
-    if choice == "Apply" then
+    on_yes = function()
       M.execute_operations(bufnr, buf_data, operations)
-    else
+    end,
+    on_no = function()
       vim.notify("dired: Changes not applied", vim.log.levels.INFO)
-    end
-  end)
+    end,
+  })
 end
 
 ---Format operations for display

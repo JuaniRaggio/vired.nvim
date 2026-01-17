@@ -635,8 +635,9 @@ local function confirm()
 
   if is_create then
     -- Confirm creation
-    vim.ui.select({ "Yes", "No" }, { prompt = "Create " .. path .. "?" }, function(choice)
-      if choice == "Yes" then
+    utils.confirm({
+      prompt = "Create " .. path .. "?",
+      on_yes = function()
         local is_dir = path:sub(-1) == "/"
         local ok, err
         if is_dir then
@@ -652,8 +653,8 @@ local function confirm()
         else
           vim.notify("dired: " .. err, vim.log.levels.ERROR)
         end
-      end
-    end)
+      end,
+    })
   else
     -- Check if it's a directory - open dired instead of selecting
     if fs.is_dir(path) then

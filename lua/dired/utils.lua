@@ -461,4 +461,268 @@ function M.prefix_match(prefix, str)
   return str:lower():sub(1, #prefix) == prefix:lower()
 end
 
+-- ============================================================================
+-- Confirmation Dialogs
+-- ============================================================================
+
+---Show a confirmation dialog with y/n/Esc keys
+---@param opts table Options
+---@field prompt string The confirmation message
+---@field on_yes function Callback when user confirms
+---@field on_no? function Callback when user declines (optional)
+---@field default? "yes"|"no" Default action for Enter (default: "yes")
+function M.confirm(opts)
+  opts = opts or {}
+  local prompt = opts.prompt or "Confirm?"
+  local on_yes = opts.on_yes
+  local on_no = opts.on_no
+  local default = opts.default or "yes"
+
+  -- Build the message lines
+  local lines = {}
+
+  -- Wrap prompt if too long
+  local max_line_width = 60
+  local words = {}
+  for word in prompt:gmatch("%S+") do
+    table.insert(words, word)
+  end
+
+  local current_line = ""
+  for _, word in ipairs(words) do
+    if #current_line + #word + 1 > max_line_width and #current_line > 0 then
+      table.insert(lines, current_line)
+      current_line = word
+    else
+      if #current_line > 0 then
+        current_line = current_line .. " " .. word
+      else
+        current_line = word
+      end
+    end
+  end
+  if #current_line > 0 then
+    table.insert(lines, current_line)
+  end
+
+  table.insert(lines, "")
+
+  -- Add key hints based on default
+  if default == "yes" then
+    table.insert(lines, "[y]es (default)  /  [n]o  /  [Esc] cancel")
+  else
+    table.insert(lines, "[y]es  /  [n]o (default)  /  [Esc] cancel")
+  end
+
+  -- Calculate window size
+  local width = 0
+  for _, line in ipairs(lines) do
+    width = math.max(width, #line)
+  end
+  width = width + 4
+  local height = #lines
+
+  -- Create buffer
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.bo[bufnr].modifiable = false
+  vim.bo[bufnr].buftype = "nofile"
+  vim.bo[bufnr].bufhidden = "wipe"
+
+  -- Center the window
+  local ui = vim.api.nvim_list_uis()[1]
+  local row = math.floor((ui.height - height) / 2)
+  local col = math.floor((ui.width - width) / 2)
+
+  local win_opts = {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    title = " Confirm ",
+    title_pos = "center",
+  }
+
+  local win = vim.api.nvim_open_win(bufnr, true, win_opts)
+
+  -- Apply highlights
+  local ns = vim.api.nvim_create_namespace("dired_confirm")
+  -- Highlight the key hints line
+  vim.api.nvim_buf_add_highlight(bufnr, ns, "Comment", #lines - 1, 0, -1)
+
+  -- Close function
+  local function close_dialog()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+
+  -- Setup keymaps
+  local key_opts = { buffer = bufnr, noremap = true, silent = true }
+
+  -- Yes
+  vim.keymap.set("n", "y", function()
+    close_dialog()
+    if on_yes then
+      vim.schedule(on_yes)
+    end
+  end, key_opts)
+
+  vim.keymap.set("n", "Y", function()
+    close_dialog()
+    if on_yes then
+      vim.schedule(on_yes)
+    end
+  end, key_opts)
+
+  -- No
+  vim.keymap.set("n", "n", function()
+    close_dialog()
+    if on_no then
+      vim.schedule(on_no)
+    end
+  end, key_opts)
+
+  vim.keymap.set("n", "N", function()
+    close_dialog()
+    if on_no then
+      vim.schedule(on_no)
+    end
+  end, key_opts)
+
+  -- Cancel (Esc, q)
+  vim.keymap.set("n", "<Esc>", function()
+    close_dialog()
+  end, key_opts)
+
+  vim.keymap.set("n", "q", function()
+    close_dialog()
+  end, key_opts)
+
+  -- Enter (default action)
+  vim.keymap.set("n", "<CR>", function()
+    close_dialog()
+    if default == "yes" then
+      if on_yes then
+        vim.schedule(on_yes)
+      end
+    else
+      if on_no then
+        vim.schedule(on_no)
+      end
+    end
+  end, key_opts)
+end
+
+---Show a selection dialog with multiple options
+---@param opts table Options
+---@field prompt string The selection prompt
+---@field items table[] List of {key = "x", label = "Option", callback = function}
+---@field default_key? string Key that Enter defaults to
+function M.select(opts)
+  opts = opts or {}
+  local prompt = opts.prompt or "Select:"
+  local items = opts.items or {}
+  local default_key = opts.default_key
+
+  -- Build the message lines
+  local lines = { prompt, "" }
+
+  for _, item in ipairs(items) do
+    local label = item.label
+    if item.key == default_key then
+      label = label .. " (default)"
+    end
+    table.insert(lines, string.format("  [%s] %s", item.key, label))
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, "  [Esc] cancel")
+
+  -- Calculate window size
+  local width = 0
+  for _, line in ipairs(lines) do
+    width = math.max(width, #line)
+  end
+  width = width + 4
+  local height = #lines
+
+  -- Create buffer
+  local bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+  vim.bo[bufnr].modifiable = false
+  vim.bo[bufnr].buftype = "nofile"
+  vim.bo[bufnr].bufhidden = "wipe"
+
+  -- Center the window
+  local ui = vim.api.nvim_list_uis()[1]
+  local row = math.floor((ui.height - height) / 2)
+  local col = math.floor((ui.width - width) / 2)
+
+  local win_opts = {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    title = " Select ",
+    title_pos = "center",
+  }
+
+  local win = vim.api.nvim_open_win(bufnr, true, win_opts)
+
+  -- Apply highlights
+  local ns = vim.api.nvim_create_namespace("dired_select")
+  vim.api.nvim_buf_add_highlight(bufnr, ns, "Title", 0, 0, -1)
+
+  -- Close function
+  local function close_dialog()
+    if vim.api.nvim_win_is_valid(win) then
+      vim.api.nvim_win_close(win, true)
+    end
+  end
+
+  -- Setup keymaps
+  local key_opts = { buffer = bufnr, noremap = true, silent = true }
+
+  -- Cancel
+  vim.keymap.set("n", "<Esc>", close_dialog, key_opts)
+  vim.keymap.set("n", "q", close_dialog, key_opts)
+
+  -- Item keys
+  for _, item in ipairs(items) do
+    vim.keymap.set("n", item.key, function()
+      close_dialog()
+      if item.callback then
+        vim.schedule(item.callback)
+      end
+    end, key_opts)
+    -- Also uppercase
+    vim.keymap.set("n", item.key:upper(), function()
+      close_dialog()
+      if item.callback then
+        vim.schedule(item.callback)
+      end
+    end, key_opts)
+  end
+
+  -- Enter (default action)
+  if default_key then
+    vim.keymap.set("n", "<CR>", function()
+      close_dialog()
+      for _, item in ipairs(items) do
+        if item.key == default_key and item.callback then
+          vim.schedule(item.callback)
+          break
+        end
+      end
+    end, key_opts)
+  end
+end
+
 return M

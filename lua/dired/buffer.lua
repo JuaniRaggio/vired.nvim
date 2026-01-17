@@ -613,8 +613,9 @@ function M.action_delete(bufnr)
   end
 
   local confirm_msg = "Delete " .. #entries .. " file(s)? [" .. table.concat(names, ", ") .. "] (moved to trash)"
-  vim.ui.select({ "Yes", "No" }, { prompt = confirm_msg }, function(choice)
-    if choice == "Yes" then
+  utils.confirm({
+    prompt = confirm_msg,
+    on_yes = function()
       for _, entry in ipairs(entries) do
         local ok, err = undo.delete_with_undo(entry.path)
         if not ok then
@@ -626,8 +627,8 @@ function M.action_delete(bufnr)
         buf_data.marks = {}
       end
       M.refresh(bufnr)
-    end
-  end)
+    end,
+  })
 end
 
 function M.action_mkdir(bufnr)

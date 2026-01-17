@@ -304,18 +304,33 @@ local prompted_this_session = {}
 local function prompt_add_project(project_root, marker)
   local project_name = get_project_name(project_root)
 
-  vim.ui.select({ "Yes", "No", "Never ask for this project" }, {
+  utils.select({
     prompt = string.format("Add '%s' to bookmarked projects? (detected by %s)", project_name, marker),
-  }, function(choice)
-    if choice == "Yes" then
-      if M.add(project_root) then
-        vim.notify(string.format("dired: Added '%s' to projects", project_name), vim.log.levels.INFO)
-      end
-    elseif choice == "Never ask for this project" then
-      -- Add to a "ignored" list
-      add_to_ignored(project_root)
-    end
-  end)
+    items = {
+      {
+        key = "y",
+        label = "Yes",
+        callback = function()
+          if M.add(project_root) then
+            vim.notify(string.format("dired: Added '%s' to projects", project_name), vim.log.levels.INFO)
+          end
+        end,
+      },
+      {
+        key = "n",
+        label = "No",
+        callback = function() end,
+      },
+      {
+        key = "x",
+        label = "Never ask for this project",
+        callback = function()
+          add_to_ignored(project_root)
+        end,
+      },
+    },
+    default_key = "y",
+  })
 end
 
 ---@type string[] Projects to never prompt about
@@ -496,14 +511,13 @@ function M.add_current()
     end
   else
     -- No project marker found, ask if user wants to add cwd anyway
-    vim.ui.select({ "Yes", "No" }, {
+    utils.confirm({
       prompt = "No project marker found. Add current directory as project?",
-    }, function(choice)
-      if choice == "Yes" then
+      on_yes = function()
         M.add(cwd)
         vim.notify(string.format("dired: Added '%s' to projects", get_project_name(cwd)), vim.log.levels.INFO)
-      end
-    end)
+      end,
+    })
   end
 end
 
