@@ -50,16 +50,18 @@ end
 function M._setup_autocommands()
   local group = vim.api.nvim_create_augroup("Dired", { clear = true })
 
-  -- Handle directory buffers
+  -- Handle directory buffers (like oil.nvim)
   vim.api.nvim_create_autocmd("BufEnter", {
     group = group,
     pattern = "*",
     callback = function(args)
       local bufname = vim.api.nvim_buf_get_name(args.buf)
       if bufname ~= "" and vim.fn.isdirectory(bufname) == 1 then
-        -- Defer to allow buffer to be fully loaded
+        -- Delete the directory buffer and open dired instead
         vim.schedule(function()
-          M.open(bufname)
+          local path = bufname
+          vim.api.nvim_buf_delete(args.buf, { force = true })
+          M.open(path)
         end)
       end
     end,
@@ -79,8 +81,12 @@ function M.open(path)
     return
   end
 
-  -- TODO: Implement buffer.open() in Phase 1
-  vim.notify("dired: opening " .. path .. " (not implemented yet)", vim.log.levels.INFO)
+  -- Create buffer and show it
+  local bufnr = buffer.create(path)
+  vim.api.nvim_set_current_buf(bufnr)
+
+  -- Position cursor on first entry
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
 end
 
 ---Open path picker for selecting a destination
