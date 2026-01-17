@@ -25,6 +25,10 @@ local picker_win = nil
 local results_buf = nil
 ---@type number|nil Results window
 local results_win = nil
+---@type number|nil Preview buffer (directory contents)
+local preview_buf = nil
+---@type number|nil Preview window
+local preview_win = nil
 
 ---@type PathPickerOpts|nil Current picker options
 local picker_opts = nil
@@ -32,6 +36,8 @@ local picker_opts = nil
 local results = {}
 ---@type number Selected result index (1-based)
 local selected_idx = 1
+---@type string|nil Last input for detecting backspace at boundary
+local last_input = nil
 
 -- ============================================================================
 -- Sources
@@ -249,6 +255,95 @@ local function get_completions(input, cwd)
 end
 
 -- ============================================================================
+-- Directory Preview
+-- ============================================================================
+
+---Render preview of a directory's contents
+---@param dir_path string Directory to preview
+local function render_preview(dir_path)
+  if not preview_buf or not vim.api.nvim_buf_is_valid(preview_buf) then
+    return
+  end
+
+  local lines = {}
+  local highlights = {}
+
+  if not dir_path or dir_path == "" then
+    lines = { "  (no directory selected)" }
+  elseif not fs.exists(dir_path) then
+    lines = { "  (directory does not exist)" }
+  elseif not fs.is_dir(dir_path) then
+    -- It's a file, show file info
+    local stat = vim.loop.fs_stat(dir_path)
+    if stat then
+      lines = {
+        "  File: " .. utils.basename(dir_path),
+        "  Size: " .. utils.format_size(stat.size),
+        "  Modified: " .. utils.format_time(stat.mtime.sec),
+      }
+    end
+  else
+    -- It's a directory, show contents
+    local entries, _ = fs.readdir(dir_path, config.get().path_picker.show_hidden)
+    if entries and #entries > 0 then
+      for i, entry in ipairs(entries) do
+        if i > 20 then
+          table.insert(lines, string.format("  ... and %d more", #entries - 20))
+          break
+        end
+
+        local icon = ""
+        local name = entry.name
+        local hl_group = "DiredFile"
+
+        if entry.type == "directory" then
+          icon = ""
+          name = name .. "/"
+          hl_group = "DiredDirectory"
+        elseif entry.type == "link" then
+          icon = ""
+          hl_group = "DiredSymlink"
+        end
+
+        local line = string.format("  %s %s", icon, name)
+        table.insert(lines, line)
+        table.insert(highlights, { line = i - 1, hl = hl_group })
+      end
+    else
+      lines = { "  (empty directory)" }
+    end
+  end
+
+  vim.bo[preview_buf].modifiable = true
+  vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, lines)
+  vim.bo[preview_buf].modifiable = false
+
+  -- Apply highlights
+  local ns = vim.api.nvim_create_namespace("dired_picker_preview")
+  vim.api.nvim_buf_clear_namespace(preview_buf, ns, 0, -1)
+
+  for _, hl in ipairs(highlights) do
+    pcall(vim.api.nvim_buf_add_highlight, preview_buf, ns, hl.hl, hl.line, 0, -1)
+  end
+end
+
+---Update preview based on current selection
+local function update_preview()
+  if not results or #results == 0 then
+    render_preview(nil)
+    return
+  end
+
+  if selected_idx <= #results then
+    local selected = results[selected_idx]
+    render_preview(selected.str)
+  else
+    -- "Create" option selected
+    render_preview(nil)
+  end
+end
+
+-- ============================================================================
 -- UI Rendering
 -- ============================================================================
 
@@ -371,6 +466,7 @@ local function update_completions()
   selected_idx = 1
 
   render_results()
+  update_preview()
 end
 
 -- ============================================================================
@@ -409,6 +505,7 @@ local function select_next()
     selected_idx = 1
   end
   render_results()
+  update_preview()
 end
 
 ---Select previous result
@@ -424,21 +521,86 @@ local function select_prev()
     selected_idx = max_idx
   end
   render_results()
+  update_preview()
 end
 
----Complete with selected result
+---Complete with selected result (Tab behavior - complete directory by directory)
 local function complete_selected()
   if not picker_buf or #results == 0 or selected_idx > #results then
     return
   end
 
   local selected = results[selected_idx]
-  vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { selected.str })
-  -- Move cursor to end
-  if picker_win and vim.api.nvim_win_is_valid(picker_win) then
-    vim.api.nvim_win_set_cursor(picker_win, { 1, #selected.str })
+  local path = selected.str
+
+  -- If it's a directory, complete it and stay in picker to continue navigating
+  if path:sub(-1) == "/" then
+    vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { path })
+    -- Move cursor to end
+    if picker_win and vim.api.nvim_win_is_valid(picker_win) then
+      vim.api.nvim_win_set_cursor(picker_win, { 1, #path })
+    end
+    update_completions()
+  else
+    -- It's a file, complete it
+    vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { path })
+    if picker_win and vim.api.nvim_win_is_valid(picker_win) then
+      vim.api.nvim_win_set_cursor(picker_win, { 1, #path })
+    end
+    update_completions()
   end
-  update_completions()
+end
+
+---Go up one directory (like backspace at boundary in vertico)
+local function go_up_directory()
+  if not picker_buf then
+    return
+  end
+
+  local input = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)[1] or ""
+
+  -- Remove trailing slash if present
+  if input:sub(-1) == "/" then
+    input = input:sub(1, -2)
+  end
+
+  -- Go to parent
+  local parent = utils.parent(input)
+  if parent and parent ~= input then
+    parent = parent .. "/"
+    vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { parent })
+    if picker_win and vim.api.nvim_win_is_valid(picker_win) then
+      vim.api.nvim_win_set_cursor(picker_win, { 1, #parent })
+    end
+    update_completions()
+  end
+end
+
+---Handle backspace with smart directory navigation
+local function handle_backspace()
+  if not picker_buf or not picker_win then
+    return
+  end
+
+  local input = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)[1] or ""
+  local cursor = vim.api.nvim_win_get_cursor(picker_win)
+  local col = cursor[2]
+
+  -- If cursor is right after a slash or at the end of a path ending in slash,
+  -- go up one directory instead of just deleting the slash
+  if input:sub(-1) == "/" and col == #input then
+    go_up_directory()
+    return
+  end
+
+  -- Check if we're about to delete a slash (cursor is right after it)
+  if col > 0 and input:sub(col, col) == "/" then
+    go_up_directory()
+    return
+  end
+
+  -- Normal backspace - let Neovim handle it
+  vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<BS>", true, false, true), "n", false)
 end
 
 ---Confirm selection
@@ -478,9 +640,22 @@ local function confirm()
       end
     end)
   else
-    local on_select = picker_opts.on_select
-    M.close()
-    on_select(path)
+    -- Check if it's a directory - open dired instead of selecting
+    if fs.is_dir(path) then
+      M.close()
+      -- Open dired in the selected directory
+      local dired_ok, dired = pcall(require, "dired")
+      if dired_ok and dired.open then
+        dired.open(path)
+      else
+        -- Fallback: use netrw or just notify
+        vim.cmd("edit " .. vim.fn.fnameescape(path))
+      end
+    else
+      local on_select = picker_opts.on_select
+      M.close()
+      on_select(path)
+    end
   end
 end
 
@@ -505,20 +680,29 @@ function M.close()
   if results_win and vim.api.nvim_win_is_valid(results_win) then
     vim.api.nvim_win_close(results_win, true)
   end
+  if preview_win and vim.api.nvim_win_is_valid(preview_win) then
+    vim.api.nvim_win_close(preview_win, true)
+  end
   if picker_buf and vim.api.nvim_buf_is_valid(picker_buf) then
     vim.api.nvim_buf_delete(picker_buf, { force = true })
   end
   if results_buf and vim.api.nvim_buf_is_valid(results_buf) then
     vim.api.nvim_buf_delete(results_buf, { force = true })
   end
+  if preview_buf and vim.api.nvim_buf_is_valid(preview_buf) then
+    vim.api.nvim_buf_delete(preview_buf, { force = true })
+  end
 
   picker_buf = nil
   picker_win = nil
   results_buf = nil
   results_win = nil
+  preview_buf = nil
+  preview_win = nil
   picker_opts = nil
   results = {}
   selected_idx = 1
+  last_input = nil
 end
 
 ---Open the path picker
@@ -567,15 +751,36 @@ function M.open(opts)
   vim.bo[results_buf].buftype = "nofile"
   vim.bo[results_buf].modifiable = false
 
-  -- Create results window
+  -- Create results window (left side)
+  local results_width = math.floor(width * 0.5)
+  local preview_width = width - results_width - 1
+
   results_win = vim.api.nvim_open_win(results_buf, false, {
     relative = "editor",
-    width = width,
+    width = results_width,
     height = results_height,
     row = row + height + 2,
     col = col,
     style = "minimal",
     border = cfg.float.border,
+  })
+
+  -- Create preview buffer
+  preview_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[preview_buf].buftype = "nofile"
+  vim.bo[preview_buf].modifiable = false
+
+  -- Create preview window (right side)
+  preview_win = vim.api.nvim_open_win(preview_buf, false, {
+    relative = "editor",
+    width = preview_width,
+    height = results_height,
+    row = row + height + 2,
+    col = col + results_width + 1,
+    style = "minimal",
+    border = cfg.float.border,
+    title = " Preview ",
+    title_pos = "center",
   })
 
   -- Setup keymaps for insert mode
@@ -589,6 +794,7 @@ function M.open(opts)
   vim.keymap.set("i", "<C-p>", select_prev, kopts)
   vim.keymap.set("i", "<Down>", select_next, kopts)
   vim.keymap.set("i", "<Up>", select_prev, kopts)
+  vim.keymap.set("i", "<BS>", handle_backspace, kopts)
 
   -- Normal mode mappings
   vim.keymap.set("n", "<CR>", confirm, kopts)
