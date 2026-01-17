@@ -102,6 +102,9 @@ function M.open(path)
     return
   end
 
+  -- Ensure we're in normal mode (important when coming from picker)
+  vim.cmd("stopinsert")
+
   -- Create buffer and show it
   local bufnr = buffer.create(path)
   vim.api.nvim_set_current_buf(bufnr)
