@@ -5,8 +5,8 @@
 
 local M = {}
 
-local utils = require("dired.utils")
-local config = require("dired.config")
+local utils = require("vired.utils")
+local config = require("vired.config")
 
 ---@type table<string, table<string, GitFileStatus>> Cache by repo root
 local status_cache = {}
@@ -124,32 +124,32 @@ function M.get_status_display(status)
 
   -- Conflict
   if index == "U" or worktree == "U" then
-    return "C", "DiredGitConflict"
+    return "C", "ViredGitConflict"
   end
 
   -- Staged changes (index has modifications)
   if index == "M" or index == "A" or index == "D" or index == "R" or index == "C" then
-    return index, "DiredGitStaged"
+    return index, "ViredGitStaged"
   end
 
   -- Worktree changes (unstaged modifications)
   if worktree == "M" or worktree == "D" then
-    return worktree, "DiredGitModified"
+    return worktree, "ViredGitModified"
   end
 
   -- Untracked
   if index == "?" and worktree == "?" then
-    return "?", "DiredGitUntracked"
+    return "?", "ViredGitUntracked"
   end
 
   -- Ignored
   if index == "!" and worktree == "!" then
-    return "!", "DiredGitIgnored"
+    return "!", "ViredGitIgnored"
   end
 
   -- Directory with changes
   if index == "D" and worktree == "D" and status.path then
-    return "*", "DiredGitModified"
+    return "*", "ViredGitModified"
   end
 
   return " ", "Normal"

@@ -3,7 +3,7 @@
 
 local M = {}
 
-local config = require("dired.config")
+local config = require("vired.config")
 
 ---@type table<string, table> Backend modules cache
 local backends = {}
@@ -18,11 +18,11 @@ local function get_backend(name)
 
   local ok, backend
   if name == "telescope" then
-    ok, backend = pcall(require, "dired.picker.telescope")
+    ok, backend = pcall(require, "vired.picker.telescope")
   elseif name == "fzf" or name == "fzf-lua" then
-    ok, backend = pcall(require, "dired.picker.fzf")
+    ok, backend = pcall(require, "vired.picker.fzf")
   elseif name == "lua" or name == "builtin" then
-    ok, backend = pcall(require, "dired.path_picker")
+    ok, backend = pcall(require, "vired.path_picker")
   end
 
   if ok and backend then
@@ -63,7 +63,7 @@ function M.get_backend()
       return backend, preferred
     end
     vim.notify(
-      string.format("dired: Backend '%s' not available, falling back to auto", preferred),
+      string.format("vired: Backend '%s' not available, falling back to auto", preferred),
       vim.log.levels.WARN
     )
   end
@@ -78,7 +78,7 @@ function M.get_backend()
   end
 
   -- Fallback to builtin (should always work)
-  return require("dired.path_picker"), "lua"
+  return require("vired.path_picker"), "lua"
 end
 
 ---Open path picker with the configured backend

@@ -13,9 +13,9 @@
 
 local M = {}
 
-local fs = require("dired.fs")
-local utils = require("dired.utils")
-local config = require("dired.config")
+local fs = require("vired.fs")
+local utils = require("vired.utils")
+local config = require("vired.config")
 
 ---@type number|nil Current picker buffer
 local picker_buf = nil
@@ -152,7 +152,7 @@ sources.bookmarks = {
   name = "bookmarks",
   icon = "",
   get_items = function(input, cwd)
-    local ok, projects = pcall(require, "dired.projects")
+    local ok, projects = pcall(require, "vired.projects")
     if not ok then
       return {}
     end
@@ -309,15 +309,15 @@ local function render_preview(dir_path)
 
         local icon = ""
         local name = entry.name
-        local hl_group = "DiredFile"
+        local hl_group = "ViredFile"
 
         if entry.type == "directory" then
           icon = ""
           name = name .. "/"
-          hl_group = "DiredDirectory"
+          hl_group = "ViredDirectory"
         elseif entry.type == "link" then
           icon = ""
-          hl_group = "DiredSymlink"
+          hl_group = "ViredSymlink"
         end
 
         local line = string.format("  %s %s", icon, name)
@@ -334,7 +334,7 @@ local function render_preview(dir_path)
   vim.bo[preview_buf].modifiable = false
 
   -- Apply highlights
-  local ns = vim.api.nvim_create_namespace("dired_picker_preview")
+  local ns = vim.api.nvim_create_namespace("vired_picker_preview")
   vim.api.nvim_buf_clear_namespace(preview_buf, ns, 0, -1)
 
   for _, hl in ipairs(highlights) do
@@ -397,7 +397,7 @@ local function render_results()
           line = i - 1,
           col = col,
           end_col = col + 1,
-          hl = "DiredPickerMatch",
+          hl = "ViredPickerMatch",
         })
       end
     end
@@ -408,7 +408,7 @@ local function render_results()
         line = i - 1,
         col = 0,
         end_col = #line,
-        hl = "DiredPickerSelection",
+        hl = "ViredPickerSelection",
       })
     end
   end
@@ -431,7 +431,7 @@ local function render_results()
         line = create_idx - 1,
         col = 0,
         end_col = #create_line,
-        hl = "DiredPickerCreate",
+        hl = "ViredPickerCreate",
       })
 
       if create_idx == selected_idx then
@@ -439,7 +439,7 @@ local function render_results()
           line = create_idx - 1,
           col = 0,
           end_col = #create_line,
-          hl = "DiredPickerSelection",
+          hl = "ViredPickerSelection",
         })
       end
     end
@@ -454,7 +454,7 @@ local function render_results()
   vim.bo[results_buf].modifiable = false
 
   -- Apply highlights
-  local ns = vim.api.nvim_create_namespace("dired_picker")
+  local ns = vim.api.nvim_create_namespace("vired_picker")
   vim.api.nvim_buf_clear_namespace(results_buf, ns, 0, -1)
 
   for _, hl in ipairs(highlights) do
@@ -651,18 +651,18 @@ local function confirm()
           M.close()
           on_select(path)
         else
-          vim.notify("dired: " .. err, vim.log.levels.ERROR)
+          vim.notify("vired: " .. err, vim.log.levels.ERROR)
         end
       end,
     })
   else
-    -- Check if it's a directory - open dired instead of selecting
+    -- Check if it's a directory - open vired instead of selecting
     if fs.is_dir(path) then
       M.close()
-      -- Open dired in the selected directory
-      local dired_ok, dired = pcall(require, "dired")
-      if dired_ok and dired.open then
-        dired.open(path)
+      -- Open vired in the selected directory
+      local vired_ok, vired = pcall(require, "vired")
+      if vired_ok and vired.open then
+        vired.open(path)
       else
         -- Fallback: use netrw or just notify
         vim.cmd("edit " .. vim.fn.fnameescape(path))

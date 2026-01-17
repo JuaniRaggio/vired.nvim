@@ -3,9 +3,9 @@
 
 local M = {}
 
-local utils = require("dired.utils")
-local fs = require("dired.fs")
-local config = require("dired.config")
+local utils = require("vired.utils")
+local fs = require("vired.fs")
+local config = require("vired.config")
 
 -- ============================================================================
 -- Types
@@ -66,7 +66,7 @@ local function get_trash_dir()
 
   -- Use XDG trash or fallback to data directory
   local xdg_data = vim.env.XDG_DATA_HOME or (vim.env.HOME .. "/.local/share")
-  trash_dir = utils.join(xdg_data, "dired-trash")
+  trash_dir = utils.join(xdg_data, "vired-trash")
 
   if not fs.exists(trash_dir) then
     fs.mkdir(trash_dir)
@@ -636,9 +636,9 @@ end
 
 ---Setup undo commands
 function M.setup()
-  vim.api.nvim_create_user_command("DiredUndo", function()
+  vim.api.nvim_create_user_command("ViredUndo", function()
     if not M.can_undo() then
-      vim.notify("dired: Nothing to undo", vim.log.levels.INFO)
+      vim.notify("vired: Nothing to undo", vim.log.levels.INFO)
       return
     end
 
@@ -646,17 +646,17 @@ function M.setup()
     local ok, err = M.undo()
 
     if ok then
-      vim.notify("dired: Undone: " .. desc, vim.log.levels.INFO)
-      -- Refresh any open dired buffers
-      M._refresh_dired_buffers()
+      vim.notify("vired: Undone: " .. desc, vim.log.levels.INFO)
+      -- Refresh any open vired buffers
+      M._refresh_vired_buffers()
     else
-      vim.notify("dired: Undo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      vim.notify("vired: Undo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
     end
-  end, { desc = "Undo last dired file operation" })
+  end, { desc = "Undo last vired file operation" })
 
-  vim.api.nvim_create_user_command("DiredRedo", function()
+  vim.api.nvim_create_user_command("ViredRedo", function()
     if not M.can_redo() then
-      vim.notify("dired: Nothing to redo", vim.log.levels.INFO)
+      vim.notify("vired: Nothing to redo", vim.log.levels.INFO)
       return
     end
 
@@ -664,18 +664,18 @@ function M.setup()
     local ok, err = M.redo()
 
     if ok then
-      vim.notify("dired: Redone: " .. desc, vim.log.levels.INFO)
-      M._refresh_dired_buffers()
+      vim.notify("vired: Redone: " .. desc, vim.log.levels.INFO)
+      M._refresh_vired_buffers()
     else
-      vim.notify("dired: Redo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+      vim.notify("vired: Redo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
     end
-  end, { desc = "Redo last undone dired operation" })
+  end, { desc = "Redo last undone vired operation" })
 
-  vim.api.nvim_create_user_command("DiredUndoHistory", function()
+  vim.api.nvim_create_user_command("ViredUndoHistory", function()
     local history = M.get_history(20)
 
     if #history == 0 then
-      vim.notify("dired: No undo history", vim.log.levels.INFO)
+      vim.notify("vired: No undo history", vim.log.levels.INFO)
       return
     end
 
@@ -686,12 +686,12 @@ function M.setup()
     end
 
     vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO)
-  end, { desc = "Show dired undo history" })
+  end, { desc = "Show vired undo history" })
 end
 
----Refresh any open dired buffers
-function M._refresh_dired_buffers()
-  local buffer = require("dired.buffer")
+---Refresh any open vired buffers
+function M._refresh_vired_buffers()
+  local buffer = require("vired.buffer")
   for bufnr, _ in pairs(buffer.buffers or {}) do
     if vim.api.nvim_buf_is_valid(bufnr) then
       buffer.render(bufnr)

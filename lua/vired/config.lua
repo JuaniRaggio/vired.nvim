@@ -1,55 +1,55 @@
----@class DiredPathPickerConfig
+---@class ViredPathPickerConfig
 ---@field backend "auto"|"telescope"|"fzf"|"lua"
 ---@field sources string[]
 ---@field create_directories boolean
 ---@field show_hidden boolean
 
----@class DiredLspConfig
+---@class ViredLspConfig
 ---@field enabled boolean
 ---@field timeout_ms number
 
----@class DiredGitConfig
+---@class ViredGitConfig
 ---@field auto_add boolean
 ---@field use_git_mv boolean
 ---@field use_git_rm boolean
 
----@class DiredFloatConfig
+---@class ViredFloatConfig
 ---@field border string
 ---@field width number
 ---@field height number
 
----@class DiredPreviewConfig
+---@class ViredPreviewConfig
 ---@field max_lines number
 ---@field max_file_size number
 ---@field auto_preview boolean
 
----@class DiredBufferEditConfig
+---@class ViredBufferEditConfig
 ---@field enabled boolean
 ---@field confirm_changes boolean
 
----@class DiredProjectsConfig
+---@class ViredProjectsConfig
 ---@field auto_prompt boolean Prompt to add new projects automatically
 ---@field markers string[] Files/directories that indicate a project root
 ---@field sort_by "name"|"recent"|"added" Default sort order for projects
 
----@class DiredConfig
+---@class ViredConfig
 ---@field columns string[]
----@field path_picker DiredPathPickerConfig
+---@field path_picker ViredPathPickerConfig
 ---@field delete_to_trash boolean
 ---@field confirm_delete boolean
 ---@field skip_confirm_single boolean
 ---@field use_picker_by_default boolean
----@field lsp DiredLspConfig
----@field git DiredGitConfig
----@field preview DiredPreviewConfig
----@field buffer_editing DiredBufferEditConfig
----@field projects DiredProjectsConfig
----@field float DiredFloatConfig
+---@field lsp ViredLspConfig
+---@field git ViredGitConfig
+---@field preview ViredPreviewConfig
+---@field buffer_editing ViredBufferEditConfig
+---@field projects ViredProjectsConfig
+---@field float ViredFloatConfig
 ---@field keymaps table<string, string>
 
 local M = {}
 
----@type DiredConfig
+---@type ViredConfig
 M.defaults = {
   -- Columnas a mostrar en el buffer
   columns = { "icon", "permissions", "size", "mtime" },
@@ -66,7 +66,7 @@ M.defaults = {
   delete_to_trash = true,
   confirm_delete = true,
   skip_confirm_single = true,
-  use_picker_by_default = false, -- If true, :Dired opens picker instead of cwd
+  use_picker_by_default = false, -- If true, :Vired opens picker instead of cwd
 
   -- LSP integration
   lsp = {
@@ -121,7 +121,7 @@ M.defaults = {
     height = 0.8,
   },
 
-  -- Keymaps (buffer-local en dired buffer)
+  -- Keymaps (buffer-local en vired buffer)
   keymaps = {
     ["R"] = "actions.move",
     ["C"] = "actions.copy",
@@ -144,19 +144,19 @@ M.defaults = {
   },
 }
 
----@type DiredConfig
+---@type ViredConfig
 M.options = {}
 
 ---Merge user config with defaults
----@param user_config? DiredConfig
----@return DiredConfig
+---@param user_config? ViredConfig
+---@return ViredConfig
 function M.setup(user_config)
   M.options = vim.tbl_deep_extend("force", {}, M.defaults, user_config or {})
   return M.options
 end
 
 ---Get current config
----@return DiredConfig
+---@return ViredConfig
 function M.get()
   return M.options
 end

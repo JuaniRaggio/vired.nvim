@@ -1,9 +1,9 @@
----Telescope backend for dired path picker
+---Telescope backend for vired path picker
 local M = {}
 
-local utils = require("dired.utils")
-local fs = require("dired.fs")
-local config = require("dired.config")
+local utils = require("vired.utils")
+local fs = require("vired.fs")
+local config = require("vired.config")
 
 ---Check if telescope is available
 ---@return boolean
@@ -181,8 +181,8 @@ function M.open(opts)
               end
               actions.close(prompt_bufnr)
               if fs.is_dir(path) then
-                local dired = require("dired")
-                dired.open(path)
+                local vired = require("vired")
+                vired.open(path)
               elseif opts.on_select then
                 opts.on_select(path)
               end
@@ -191,15 +191,15 @@ function M.open(opts)
           end
 
           if selection.is_dir then
-            -- Navigate into directory or open dired
+            -- Navigate into directory or open vired
             actions.close(prompt_bufnr)
             if selection.value.display == ".." then
               -- Go to parent, reopen picker
               make_picker(selection.path):find()
             else
-              -- Open dired in this directory
-              local dired = require("dired")
-              dired.open(selection.path)
+              -- Open vired in this directory
+              local vired = require("vired")
+              vired.open(selection.path)
             end
           else
             -- Select file

@@ -1,8 +1,8 @@
 local M = {}
 
-local fs = require("dired.fs")
-local utils = require("dired.utils")
-local config = require("dired.config")
+local fs = require("vired.fs")
+local utils = require("vired.utils")
+local config = require("vired.config")
 
 ---@type number|nil Preview buffer
 local preview_buf = nil

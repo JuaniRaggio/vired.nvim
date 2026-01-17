@@ -1,20 +1,19 @@
----@mod dired Dired - A file manager for Neovim
+---@mod vired Vired - A file manager for Neovim
 ---@brief [[
----dired.nvim is a file manager that replicates the dired + ivy/vertico
----experience from Emacs: file operations with interactive fuzzy completion
----for paths, where moving/renaming/copying files is as fluid as code
----autocompletion.
+---vired.nvim is a file manager that replicates the Emacs dired + ivy/vertico
+---experience: file operations with interactive fuzzy completion for paths,
+---where moving/renaming/copying files is as fluid as code autocompletion.
 ---@brief ]]
 
 local M = {}
 
-local config = require("dired.config")
+local config = require("vired.config")
 
 ---@type boolean
 M._initialized = false
 
----Setup dired with user configuration
----@param opts? DiredConfig User configuration
+---Setup vired with user configuration
+---@param opts? ViredConfig User configuration
 function M.setup(opts)
   if M._initialized then
     return
@@ -23,13 +22,13 @@ function M.setup(opts)
   config.setup(opts)
 
   -- Initialize highlights
-  require("dired.highlights").setup()
+  require("vired.highlights").setup()
 
   -- Initialize projects
-  require("dired.projects").setup()
+  require("vired.projects").setup()
 
   -- Initialize undo system
-  require("dired.undo").setup()
+  require("vired.undo").setup()
 
   M._setup_commands()
   M._setup_autocommands()
@@ -39,7 +38,7 @@ end
 
 ---Setup user commands
 function M._setup_commands()
-  vim.api.nvim_create_user_command("Dired", function(cmd_opts)
+  vim.api.nvim_create_user_command("Vired", function(cmd_opts)
     local path = cmd_opts.args
     if path == "" then
       -- No argument: check config for default behavior
@@ -55,19 +54,19 @@ function M._setup_commands()
   end, {
     nargs = "?",
     complete = "dir",
-    desc = "Open dired file manager",
+    desc = "Open vired file manager",
   })
 
-  vim.api.nvim_create_user_command("DiredOpen", function()
+  vim.api.nvim_create_user_command("ViredOpen", function()
     M.pick_and_open()
   end, {
-    desc = "Open dired with interactive directory picker",
+    desc = "Open vired with interactive directory picker",
   })
 end
 
 ---Setup autocommands
 function M._setup_autocommands()
-  local group = vim.api.nvim_create_augroup("Dired", { clear = true })
+  local group = vim.api.nvim_create_augroup("Vired", { clear = true })
 
   -- Handle directory buffers (like oil.nvim)
   vim.api.nvim_create_autocmd("BufEnter", {
@@ -76,7 +75,7 @@ function M._setup_autocommands()
     callback = function(args)
       local bufname = vim.api.nvim_buf_get_name(args.buf)
       if bufname ~= "" and vim.fn.isdirectory(bufname) == 1 then
-        -- Delete the directory buffer and open dired instead
+        -- Delete the directory buffer and open vired instead
         vim.schedule(function()
           local path = bufname
           vim.api.nvim_buf_delete(args.buf, { force = true })
@@ -87,18 +86,18 @@ function M._setup_autocommands()
   })
 end
 
----Open dired buffer for a directory
+---Open vired buffer for a directory
 ---@param path? string Directory path (defaults to cwd)
 function M.open(path)
-  local utils = require("dired.utils")
-  local buffer = require("dired.buffer")
-  local projects = require("dired.projects")
+  local utils = require("vired.utils")
+  local buffer = require("vired.buffer")
+  local projects = require("vired.projects")
 
   path = path or vim.loop.cwd()
   path = utils.absolute(path)
 
   if not utils.is_dir(path) then
-    vim.notify("dired: not a directory: " .. path, vim.log.levels.ERROR)
+    vim.notify("vired: not a directory: " .. path, vim.log.levels.ERROR)
     return
   end
 
@@ -123,17 +122,17 @@ end
 ---@field on_select? function Callback when path is selected
 ---@field create_if_missing? boolean Offer to create non-existent paths
 function M.pick_path(opts)
-  local picker = require("dired.picker")
+  local picker = require("vired.picker")
   opts = opts or {}
   opts.cwd = opts.cwd or vim.loop.cwd()
   opts.on_select = opts.on_select or function() end
   picker.open(opts)
 end
 
----Open interactive directory picker, then open dired in selected directory
+---Open interactive directory picker, then open vired in selected directory
 ---This provides a Vertico-like experience for directory navigation
 function M.pick_and_open()
-  local picker = require("dired.picker")
+  local picker = require("vired.picker")
   local cwd = vim.loop.cwd()
 
   picker.open({
@@ -142,11 +141,11 @@ function M.pick_and_open()
     cwd = cwd,
     create_if_missing = true,
     on_select = function(path)
-      -- Backends open dired for directories directly
+      -- Backends open vired for directories directly
       -- but if somehow we get here with a file, open its parent
-      local fs = require("dired.fs")
+      local fs = require("vired.fs")
       if fs.is_file(path) then
-        local utils = require("dired.utils")
+        local utils = require("vired.utils")
         path = utils.parent(path)
       end
       if path then
@@ -160,13 +159,13 @@ end
 ---@param source string|string[] Source path(s)
 ---@param dest string Destination path
 function M.move(source, dest)
-  local fs = require("dired.fs")
+  local fs = require("vired.fs")
   local sources = type(source) == "table" and source or { source }
 
   for _, src in ipairs(sources) do
     local ok, err = fs.rename(src, dest)
     if not ok then
-      vim.notify("dired: " .. err, vim.log.levels.ERROR)
+      vim.notify("vired: " .. err, vim.log.levels.ERROR)
       return false
     end
   end
@@ -177,13 +176,13 @@ end
 ---@param source string|string[] Source path(s)
 ---@param dest string Destination path
 function M.copy(source, dest)
-  local fs = require("dired.fs")
+  local fs = require("vired.fs")
   local sources = type(source) == "table" and source or { source }
 
   for _, src in ipairs(sources) do
     local ok, err = fs.copy(src, dest)
     if not ok then
-      vim.notify("dired: " .. err, vim.log.levels.ERROR)
+      vim.notify("vired: " .. err, vim.log.levels.ERROR)
       return false
     end
   end
@@ -193,7 +192,7 @@ end
 ---Delete file(s)
 ---@param path string|string[] Path(s) to delete
 function M.delete(path)
-  local fs = require("dired.fs")
+  local fs = require("vired.fs")
   local paths = type(path) == "table" and path or { path }
 
   for _, p in ipairs(paths) do
@@ -204,7 +203,7 @@ function M.delete(path)
       ok, err = fs.delete(p)
     end
     if not ok then
-      vim.notify("dired: " .. err, vim.log.levels.ERROR)
+      vim.notify("vired: " .. err, vim.log.levels.ERROR)
       return false
     end
   end
@@ -214,19 +213,19 @@ end
 ---Create directory
 ---@param path string Directory path to create
 function M.mkdir(path)
-  local fs = require("dired.fs")
+  local fs = require("vired.fs")
   local ok, err = fs.mkdir(path)
   if not ok then
-    vim.notify("dired: " .. err, vim.log.levels.ERROR)
+    vim.notify("vired: " .. err, vim.log.levels.ERROR)
     return false
   end
   return true
 end
 
----Mark a file in the current dired buffer
+---Mark a file in the current vired buffer
 ---@param path string Path to mark
 function M.mark(path)
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   local bufnr = vim.api.nvim_get_current_buf()
   local buf_data = buffer.buffers[bufnr]
 
@@ -236,10 +235,10 @@ function M.mark(path)
   end
 end
 
----Unmark a file in the current dired buffer
+---Unmark a file in the current vired buffer
 ---@param path string Path to unmark
 function M.unmark(path)
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   local bufnr = vim.api.nvim_get_current_buf()
   local buf_data = buffer.buffers[bufnr]
 
@@ -249,10 +248,10 @@ function M.unmark(path)
   end
 end
 
----Get all marked files in the current dired buffer
+---Get all marked files in the current vired buffer
 ---@return string[] List of marked paths
 function M.get_marked()
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   local bufnr = vim.api.nvim_get_current_buf()
   local buf_data = buffer.buffers[bufnr]
 
@@ -267,9 +266,9 @@ function M.get_marked()
   return marked
 end
 
----Clear all marks in the current dired buffer
+---Clear all marks in the current vired buffer
 function M.clear_marks()
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   local bufnr = vim.api.nvim_get_current_buf()
   buffer.unmark_all(bufnr)
 end

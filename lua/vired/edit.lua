@@ -1,21 +1,21 @@
----@class DiredEditOperation
+---@class ViredEditOperation
 ---@field type "rename"|"delete"|"create"
 ---@field source string|nil Original path (for rename/delete)
 ---@field dest string|nil New path (for rename/create)
 
----@class DiredEditSnapshot
----@field entries table<number, DiredEntry> Line number -> original entry
+---@class ViredEditSnapshot
+---@field entries table<number, ViredEntry> Line number -> original entry
 ---@field path string Directory path
 ---@field name_positions table<number, number> Line number -> column where name starts
 
 local M = {}
 
-local utils = require("dired.utils")
-local fs = require("dired.fs")
-local config = require("dired.config")
-local git = require("dired.git")
+local utils = require("vired.utils")
+local fs = require("vired.fs")
+local config = require("vired.config")
+local git = require("vired.git")
 
----@type table<number, DiredEditSnapshot> Buffer -> snapshot
+---@type table<number, ViredEditSnapshot> Buffer -> snapshot
 local snapshots = {}
 
 ---@type table<number, boolean> Buffer -> is in edit mode
@@ -28,7 +28,7 @@ local change_autocmds = {}
 local highlight_timers = {}
 
 local HEADER_LINES = 1
-local EDIT_NS = vim.api.nvim_create_namespace("dired_edit")
+local EDIT_NS = vim.api.nvim_create_namespace("vired_edit")
 local HIGHLIGHT_DEBOUNCE_MS = 100 -- Debounce highlight updates for performance
 
 -- ============================================================================
@@ -185,7 +185,7 @@ end
 
 ---Parse a line more robustly by matching against known entry
 ---@param line string The edited line
----@param original_entry DiredEntry The original entry for this line
+---@param original_entry ViredEntry The original entry for this line
 ---@param columns string[] Column configuration
 ---@return string|nil new_name The parsed name (nil if line deleted)
 function M.parse_line_with_context(line, original_entry, columns)
@@ -203,7 +203,7 @@ end
 
 ---Create a snapshot of the current buffer state before editing
 ---@param bufnr number Buffer number
----@param buf_data table DiredBuffer data
+---@param buf_data table ViredBuffer data
 function M.create_snapshot(bufnr, buf_data)
   local columns = config.get().columns
 
@@ -224,7 +224,7 @@ end
 
 ---Get snapshot for a buffer
 ---@param bufnr number
----@return DiredEditSnapshot|nil
+---@return ViredEditSnapshot|nil
 function M.get_snapshot(bufnr)
   return snapshots[bufnr]
 end
@@ -260,7 +260,7 @@ function M.update_highlights(bufnr)
     if header and not header:find("%[EDIT%]") then
       -- Add visual indicator in header (we can't modify, just highlight)
     end
-    vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditMode", 0, 0, -1)
+    vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "ViredEditMode", 0, 0, -1)
   end
 
   -- Check each line for changes
@@ -273,14 +273,14 @@ function M.update_highlights(bufnr)
 
       if new_name == nil or (line and line:match("^%s*$")) then
         -- Line was deleted/emptied - show as deleted
-        vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditDeleted", line_num - 1, 0, -1)
+        vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "ViredEditDeleted", line_num - 1, 0, -1)
       elseif new_name ~= original_entry.name then
         -- Name changed - show as modified
-        vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditChanged", line_num - 1, 0, -1)
+        vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "ViredEditChanged", line_num - 1, 0, -1)
       end
     elseif line and not line:match("^%s*$") then
       -- New line with content
-      vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditNew", line_num - 1, 0, -1)
+      vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "ViredEditNew", line_num - 1, 0, -1)
     end
   end
 
@@ -318,7 +318,7 @@ end
 
 ---Calculate operations needed based on buffer changes
 ---@param bufnr number Buffer number
----@return DiredEditOperation[] operations
+---@return ViredEditOperation[] operations
 function M.calculate_diff(bufnr)
   local snapshot = snapshots[bufnr]
   if not snapshot then
@@ -405,7 +405,7 @@ end
 
 ---Enter edit mode for a buffer
 ---@param bufnr number
----@param buf_data table DiredBuffer data
+---@param buf_data table ViredBuffer data
 function M.enter_edit_mode(bufnr, buf_data)
   if edit_mode[bufnr] then
     return -- Already in edit mode
@@ -454,7 +454,7 @@ function M.enter_edit_mode(bufnr, buf_data)
   -- Initial highlight update (immediate)
   M.update_highlights(bufnr)
 
-  vim.notify("dired: Edit mode enabled. :w to apply, :e! to cancel. Changes highlighted in real-time.", vim.log.levels.INFO)
+  vim.notify("vired: Edit mode enabled. :w to apply, :e! to cancel. Changes highlighted in real-time.", vim.log.levels.INFO)
 end
 
 ---Clean up edit mode resources
@@ -487,7 +487,7 @@ end
 
 ---Exit edit mode without applying changes
 ---@param bufnr number
----@param buf_data table DiredBuffer data
+---@param buf_data table ViredBuffer data
 function M.cancel_edit_mode(bufnr, buf_data)
   if not edit_mode[bufnr] then
     return
@@ -496,10 +496,10 @@ function M.cancel_edit_mode(bufnr, buf_data)
   cleanup_edit_mode(bufnr)
 
   -- Re-render to restore original state
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   buffer.refresh(bufnr)
 
-  vim.notify("dired: Edit cancelled", vim.log.levels.INFO)
+  vim.notify("vired: Edit cancelled", vim.log.levels.INFO)
 end
 
 -- ============================================================================
@@ -509,18 +509,18 @@ end
 ---Apply all pending changes to the filesystem
 ---@param bufnr number
 function M.apply_changes(bufnr)
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   local buf_data = buffer.buffers[bufnr]
 
   if not buf_data then
-    vim.notify("dired: Invalid buffer", vim.log.levels.ERROR)
+    vim.notify("vired: Invalid buffer", vim.log.levels.ERROR)
     return
   end
 
   local operations = M.calculate_diff(bufnr)
 
   if #operations == 0 then
-    vim.notify("dired: No changes to apply", vim.log.levels.INFO)
+    vim.notify("vired: No changes to apply", vim.log.levels.INFO)
     M.exit_edit_mode(bufnr, buf_data)
     return
   end
@@ -533,13 +533,13 @@ function M.apply_changes(bufnr)
       M.execute_operations(bufnr, buf_data, operations)
     end,
     on_no = function()
-      vim.notify("dired: Changes not applied", vim.log.levels.INFO)
+      vim.notify("vired: Changes not applied", vim.log.levels.INFO)
     end,
   })
 end
 
 ---Format operations for display
----@param operations DiredEditOperation[]
+---@param operations ViredEditOperation[]
 ---@return string
 function M.format_operations_summary(operations)
   local lines = {}
@@ -568,7 +568,7 @@ function M.show_diff_preview(bufnr)
   local operations = M.calculate_diff(bufnr)
 
   if #operations == 0 then
-    vim.notify("dired: No changes to preview", vim.log.levels.INFO)
+    vim.notify("vired: No changes to preview", vim.log.levels.INFO)
     return nil, nil
   end
 
@@ -588,17 +588,17 @@ function M.show_diff_preview(bufnr)
       local src_name = utils.basename(op.source)
       local dest_name = utils.basename(op.dest)
       table.insert(lines, string.format("  [RENAME] %s", src_name))
-      table.insert(hl_lines, { line_num - 1, "DiredEditChanged" })
+      table.insert(hl_lines, { line_num - 1, "ViredEditChanged" })
       table.insert(lines, string.format("        -> %s", dest_name))
-      table.insert(hl_lines, { #lines - 1, "DiredEditNew" })
+      table.insert(hl_lines, { #lines - 1, "ViredEditNew" })
     elseif op.type == "delete" then
       local name = utils.basename(op.source)
       table.insert(lines, string.format("  [DELETE] %s", name))
-      table.insert(hl_lines, { line_num - 1, "DiredEditDeleted" })
+      table.insert(hl_lines, { line_num - 1, "ViredEditDeleted" })
     elseif op.type == "create" then
       local name = utils.basename(op.dest)
       table.insert(lines, string.format("  [CREATE] %s", name))
-      table.insert(hl_lines, { line_num - 1, "DiredEditNew" })
+      table.insert(hl_lines, { line_num - 1, "ViredEditNew" })
     end
   end
 
@@ -626,7 +626,7 @@ function M.show_diff_preview(bufnr)
   vim.bo[preview_buf].modifiable = false
 
   -- Apply highlights
-  local preview_ns = vim.api.nvim_create_namespace("dired_preview")
+  local preview_ns = vim.api.nvim_create_namespace("vired_preview")
   for _, hl in ipairs(hl_lines) do
     vim.api.nvim_buf_add_highlight(preview_buf, preview_ns, hl[2], hl[1], 0, -1)
   end
@@ -658,7 +658,7 @@ function M.show_diff_preview(bufnr)
 end
 
 ---Validate an operation before executing
----@param op DiredEditOperation
+---@param op ViredEditOperation
 ---@return boolean valid, string|nil error
 local function validate_operation(op)
   if op.type == "rename" then
@@ -710,12 +710,12 @@ end
 ---Execute filesystem operations
 ---@param bufnr number
 ---@param buf_data table
----@param operations DiredEditOperation[]
+---@param operations ViredEditOperation[]
 function M.execute_operations(bufnr, buf_data, operations)
   local errors = {}
   local warnings = {}
   local successful = 0
-  local lsp = require("dired.lsp")
+  local lsp = require("vired.lsp")
   local cfg = config.get() or {}
 
   -- Validate all operations first
@@ -728,7 +728,7 @@ function M.execute_operations(bufnr, buf_data, operations)
 
   -- Show warnings if any
   if #warnings > 0 then
-    vim.notify("dired: Validation warnings:\n" .. table.concat(warnings, "\n"), vim.log.levels.WARN)
+    vim.notify("vired: Validation warnings:\n" .. table.concat(warnings, "\n"), vim.log.levels.WARN)
   end
 
   for _, op in ipairs(operations) do
@@ -841,13 +841,13 @@ function M.execute_operations(bufnr, buf_data, operations)
   -- Report results
   if #errors > 0 then
     vim.notify(
-      string.format("dired: %d of %d operations failed:\n%s", #errors, #operations, table.concat(errors, "\n")),
+      string.format("vired: %d of %d operations failed:\n%s", #errors, #operations, table.concat(errors, "\n")),
       vim.log.levels.ERROR
     )
   elseif successful > 0 then
-    vim.notify(string.format("dired: Successfully applied %d operation(s)", successful), vim.log.levels.INFO)
+    vim.notify(string.format("vired: Successfully applied %d operation(s)", successful), vim.log.levels.INFO)
   else
-    vim.notify("dired: No operations were applied", vim.log.levels.WARN)
+    vim.notify("vired: No operations were applied", vim.log.levels.WARN)
   end
 end
 
@@ -858,7 +858,7 @@ function M.exit_edit_mode(bufnr, buf_data)
   cleanup_edit_mode(bufnr)
 
   -- Refresh buffer
-  local buffer = require("dired.buffer")
+  local buffer = require("vired.buffer")
   buffer.refresh(bufnr)
 end
 

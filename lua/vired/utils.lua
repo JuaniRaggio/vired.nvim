@@ -549,7 +549,7 @@ function M.confirm(opts)
   local win = vim.api.nvim_open_win(bufnr, true, win_opts)
 
   -- Apply highlights
-  local ns = vim.api.nvim_create_namespace("dired_confirm")
+  local ns = vim.api.nvim_create_namespace("vired_confirm")
   -- Highlight the key hints line
   vim.api.nvim_buf_add_highlight(bufnr, ns, "Comment", #lines - 1, 0, -1)
 
@@ -677,7 +677,7 @@ function M.select(opts)
   local win = vim.api.nvim_open_win(bufnr, true, win_opts)
 
   -- Apply highlights
-  local ns = vim.api.nvim_create_namespace("dired_select")
+  local ns = vim.api.nvim_create_namespace("vired_select")
   vim.api.nvim_buf_add_highlight(bufnr, ns, "Title", 0, 0, -1)
 
   -- Close function

@@ -1,19 +1,19 @@
----Project management for dired (Projectile-like functionality)
+---Project management for vired (Projectile-like functionality)
 ---Automatically detects project roots and allows bookmarking projects
 
 local M = {}
 
-local utils = require("dired.utils")
-local fs = require("dired.fs")
-local config = require("dired.config")
+local utils = require("vired.utils")
+local fs = require("vired.fs")
+local config = require("vired.config")
 
----@class DiredProject
+---@class ViredProject
 ---@field path string Absolute path to project root
 ---@field name string Project name (usually directory name)
 ---@field added_at number Timestamp when added
 ---@field last_accessed number Timestamp of last access
 
----@type DiredProject[]
+---@type ViredProject[]
 local projects = {}
 
 ---@type boolean Whether projects have been loaded from disk
@@ -41,7 +41,7 @@ local DEFAULT_MARKERS = {
   "requirements.txt",
   ".project",
   ".projectile",
-  "dired-project",
+  "vired-project",
 }
 
 ---Get configured project markers
@@ -109,7 +109,7 @@ local function get_projects_file()
     return projects_file
   end
   local data_dir = vim.fn.stdpath("data")
-  projects_file = utils.join(data_dir, "dired_projects.json")
+  projects_file = utils.join(data_dir, "vired_projects.json")
   return projects_file
 end
 
@@ -159,13 +159,13 @@ local function save_projects()
 
   local ok, json = pcall(vim.json.encode, projects)
   if not ok then
-    vim.notify("dired: Failed to encode projects", vim.log.levels.ERROR)
+    vim.notify("vired: Failed to encode projects", vim.log.levels.ERROR)
     return
   end
 
   local file = io.open(file_path, "w")
   if not file then
-    vim.notify("dired: Failed to write projects file", vim.log.levels.ERROR)
+    vim.notify("vired: Failed to write projects file", vim.log.levels.ERROR)
     return
   end
 
@@ -253,7 +253,7 @@ end
 
 ---Get all bookmarked projects
 ---@param sort_by? "name"|"recent"|"added" Sort order (default: "recent")
----@return DiredProject[]
+---@return ViredProject[]
 function M.list(sort_by)
   load_projects()
 
@@ -312,7 +312,7 @@ local function prompt_add_project(project_root, marker)
         label = "Yes",
         callback = function()
           if M.add(project_root) then
-            vim.notify(string.format("dired: Added '%s' to projects", project_name), vim.log.levels.INFO)
+            vim.notify(string.format("vired: Added '%s' to projects", project_name), vim.log.levels.INFO)
           end
         end,
       },
@@ -341,7 +341,7 @@ local ignored_loaded = false
 ---@return string
 local function get_ignored_file()
   local data_dir = vim.fn.stdpath("data")
-  return utils.join(data_dir, "dired_projects_ignored.json")
+  return utils.join(data_dir, "vired_projects_ignored.json")
 end
 
 ---Load ignored projects
@@ -471,7 +471,7 @@ function M.pick_project()
   local project_list = M.list("recent")
 
   if #project_list == 0 then
-    vim.notify("dired: No bookmarked projects. Open a project directory to add it.", vim.log.levels.INFO)
+    vim.notify("vired: No bookmarked projects. Open a project directory to add it.", vim.log.levels.INFO)
     return
   end
 
@@ -491,8 +491,8 @@ function M.pick_project()
   }, function(choice)
     if choice then
       M.touch(choice.project.path)
-      local dired = require("dired")
-      dired.open(choice.project.path)
+      local vired = require("vired")
+      vired.open(choice.project.path)
     end
   end)
 end
@@ -504,10 +504,10 @@ function M.add_current()
 
   if project_root then
     if M.is_bookmarked(project_root) then
-      vim.notify("dired: Project already bookmarked", vim.log.levels.INFO)
+      vim.notify("vired: Project already bookmarked", vim.log.levels.INFO)
     else
       M.add(project_root)
-      vim.notify(string.format("dired: Added '%s' to projects", get_project_name(project_root)), vim.log.levels.INFO)
+      vim.notify(string.format("vired: Added '%s' to projects", get_project_name(project_root)), vim.log.levels.INFO)
     end
   else
     -- No project marker found, ask if user wants to add cwd anyway
@@ -515,7 +515,7 @@ function M.add_current()
       prompt = "No project marker found. Add current directory as project?",
       on_yes = function()
         M.add(cwd)
-        vim.notify(string.format("dired: Added '%s' to projects", get_project_name(cwd)), vim.log.levels.INFO)
+        vim.notify(string.format("vired: Added '%s' to projects", get_project_name(cwd)), vim.log.levels.INFO)
       end,
     })
   end
@@ -526,7 +526,7 @@ function M.remove_project()
   local project_list = M.list("name")
 
   if #project_list == 0 then
-    vim.notify("dired: No bookmarked projects", vim.log.levels.INFO)
+    vim.notify("vired: No bookmarked projects", vim.log.levels.INFO)
     return
   end
 
@@ -546,7 +546,7 @@ function M.remove_project()
   }, function(choice)
     if choice then
       M.remove(choice.project.path)
-      vim.notify(string.format("dired: Removed '%s' from projects", choice.project.name), vim.log.levels.INFO)
+      vim.notify(string.format("vired: Removed '%s' from projects", choice.project.name), vim.log.levels.INFO)
     end
   end)
 end
@@ -558,15 +558,15 @@ end
 ---Setup project management
 function M.setup()
   -- Create user commands
-  vim.api.nvim_create_user_command("DiredProjects", function()
+  vim.api.nvim_create_user_command("ViredProjects", function()
     M.pick_project()
-  end, { desc = "Open dired project picker" })
+  end, { desc = "Open vired project picker" })
 
-  vim.api.nvim_create_user_command("DiredProjectAdd", function()
+  vim.api.nvim_create_user_command("ViredProjectAdd", function()
     M.add_current()
   end, { desc = "Add current directory as a project" })
 
-  vim.api.nvim_create_user_command("DiredProjectRemove", function()
+  vim.api.nvim_create_user_command("ViredProjectRemove", function()
     M.remove_project()
   end, { desc = "Remove a bookmarked project" })
 end

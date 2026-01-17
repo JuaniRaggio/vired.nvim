@@ -1,9 +1,9 @@
----fzf-lua backend for dired path picker
+---fzf-lua backend for vired path picker
 local M = {}
 
-local utils = require("dired.utils")
-local fs = require("dired.fs")
-local config = require("dired.config")
+local utils = require("vired.utils")
+local fs = require("vired.fs")
+local config = require("vired.config")
 
 ---Check if fzf-lua is available
 ---@return boolean
@@ -173,9 +173,9 @@ function M.open(opts)
           end
 
           if fs.is_dir(path) then
-            -- Open dired
-            local dired = require("dired")
-            dired.open(path)
+            -- Open vired
+            local vired = require("vired")
+            vired.open(path)
           else
             -- File selected
             if opts.on_select then

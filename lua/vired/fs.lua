@@ -1,4 +1,4 @@
----@class DiredEntry
+---@class ViredEntry
 ---@field name string Filename
 ---@field path string Full path
 ---@field type "file"|"directory"|"link"|"unknown"
@@ -10,11 +10,11 @@
 local M = {}
 
 local uv = vim.loop or vim.uv
-local utils = require("dired.utils")
+local utils = require("vired.utils")
 
 ---Get file/directory information
 ---@param path string
----@return DiredEntry|nil, string|nil
+---@return ViredEntry|nil, string|nil
 function M.stat(path)
   local stat = uv.fs_lstat(path)
   if not stat then
@@ -42,7 +42,7 @@ end
 ---Read directory contents
 ---@param path string Directory path
 ---@param show_hidden? boolean Include hidden files (default: false)
----@return DiredEntry[], string|nil
+---@return ViredEntry[], string|nil
 function M.readdir(path, show_hidden)
   path = utils.normalize(path)
 

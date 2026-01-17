@@ -3,7 +3,7 @@
 
 local M = {}
 
-local config = require("dired.config")
+local config = require("vired.config")
 
 -- ============================================================================
 -- LSP Client Discovery
@@ -106,7 +106,7 @@ function M.will_rename_files(old_path, new_path, callback)
 
       if err then
         had_error = true
-        vim.notify("dired: LSP willRename error: " .. vim.inspect(err), vim.log.levels.WARN)
+        vim.notify("vired: LSP willRename error: " .. vim.inspect(err), vim.log.levels.WARN)
       elseif result and result.documentChanges then
         -- Collect workspace edits
         for _, change in ipairs(result.documentChanges) do
@@ -135,7 +135,7 @@ function M.will_rename_files(old_path, new_path, callback)
   -- Set timeout
   vim.defer_fn(function()
     if pending > 0 then
-      vim.notify("dired: LSP rename request timed out", vim.log.levels.WARN)
+      vim.notify("vired: LSP rename request timed out", vim.log.levels.WARN)
       pending = 0
       callback(false, nil)
     end
@@ -199,7 +199,7 @@ function M.apply_workspace_edits(edits, callback)
         local ok = pcall(vim.lsp.util.apply_text_edits, edit.edits, bufnr, "utf-16")
         if not ok then
           success = false
-          vim.notify("dired: Failed to apply edit to " .. uri, vim.log.levels.WARN)
+          vim.notify("vired: Failed to apply edit to " .. uri, vim.log.levels.WARN)
         end
       end
     elseif edit.uri and edit.edits then

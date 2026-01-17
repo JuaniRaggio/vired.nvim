@@ -1,28 +1,28 @@
 local M = {}
 
-local fs = require("dired.fs")
-local utils = require("dired.utils")
-local config = require("dired.config")
-local highlights = require("dired.highlights")
-local git = require("dired.git")
-local undo = require("dired.undo")
+local fs = require("vired.fs")
+local utils = require("vired.utils")
+local config = require("vired.config")
+local highlights = require("vired.highlights")
+local git = require("vired.git")
+local undo = require("vired.undo")
 
----@class DiredBuffer
+---@class ViredBuffer
 ---@field bufnr number Buffer number
 ---@field path string Current directory path
----@field entries DiredEntry[] Directory entries
+---@field entries ViredEntry[] Directory entries
 ---@field show_hidden boolean Show hidden files
 ---@field marks table<string, boolean> Marked files (path -> true)
 ---@field git_root string|nil Git repository root (nil if not in repo)
 ---@field git_status table<string, GitFileStatus>|nil Git status map
 
----@type table<number, DiredBuffer>
+---@type table<number, ViredBuffer>
 M.buffers = {}
 
-local FILETYPE = "dired"
+local FILETYPE = "vired"
 local HEADER_LINES = 1 -- Number of header lines before entries
 
----Create or get dired buffer for path
+---Create or get vired buffer for path
 ---@param path string Directory path
 ---@return number bufnr
 function M.create(path)
@@ -38,7 +38,7 @@ function M.create(path)
   -- Create new buffer
   local bufnr = vim.api.nvim_create_buf(false, true)
 
-  vim.api.nvim_buf_set_name(bufnr, "dired://" .. path)
+  vim.api.nvim_buf_set_name(bufnr, "vired://" .. path)
 
   -- Buffer options
   vim.bo[bufnr].filetype = FILETYPE
@@ -78,7 +78,7 @@ function M.create(path)
   return bufnr
 end
 
----Setup keymaps for dired buffer
+---Setup keymaps for vired buffer
 ---@param bufnr number
 function M.setup_keymaps(bufnr)
   local opts = { buffer = bufnr, noremap = true, silent = true }
@@ -163,7 +163,7 @@ function M.refresh(bufnr)
   -- Read directory
   local entries, err = fs.readdir(buf_data.path, buf_data.show_hidden)
   if err then
-    vim.notify("dired: " .. err, vim.log.levels.ERROR)
+    vim.notify("vired: " .. err, vim.log.levels.ERROR)
     return
   end
 
@@ -207,7 +207,7 @@ function M.render(bufnr)
     header = header .. " [git]"
   end
   table.insert(lines, header)
-  table.insert(hl_marks, { line = 0, col = 0, end_col = #header, hl = "DiredHeader" })
+  table.insert(hl_marks, { line = 0, col = 0, end_col = #header, hl = "ViredHeader" })
 
   -- Render each entry
   for i, entry in ipairs(buf_data.entries) do
@@ -229,7 +229,7 @@ function M.render(bufnr)
   vim.bo[bufnr].modifiable = false
 
   -- Apply highlights
-  local ns = vim.api.nvim_create_namespace("dired")
+  local ns = vim.api.nvim_create_namespace("vired")
   vim.api.nvim_buf_clear_namespace(bufnr, ns, 0, -1)
 
   for _, hl in ipairs(hl_marks) do
@@ -238,7 +238,7 @@ function M.render(bufnr)
 end
 
 ---Render a single entry line
----@param entry DiredEntry
+---@param entry ViredEntry
 ---@param is_marked boolean
 ---@param columns string[]
 ---@param git_status GitFileStatus|nil
@@ -252,7 +252,7 @@ function M.render_entry(entry, is_marked, columns, git_status)
   local mark_char = is_marked and "*" or " "
   table.insert(parts, mark_char)
   if is_marked then
-    table.insert(hls, { col = col, end_col = col + 1, hl = "DiredMarked" })
+    table.insert(hls, { col = col, end_col = col + 1, hl = "ViredMarked" })
   end
   col = col + 2 -- mark + space
 
@@ -275,7 +275,7 @@ function M.render_entry(entry, is_marked, columns, git_status)
     elseif column == "permissions" then
       local perms = utils.format_permissions(entry.mode, entry.type)
       table.insert(parts, perms)
-      table.insert(hls, { col = col, end_col = col + #perms, hl = "DiredPermissions" })
+      table.insert(hls, { col = col, end_col = col + #perms, hl = "ViredPermissions" })
       col = col + #perms + 1
 
     elseif column == "size" then
@@ -286,13 +286,13 @@ function M.render_entry(entry, is_marked, columns, git_status)
         size_str = string.format("%6s", utils.format_size(entry.size))
       end
       table.insert(parts, size_str)
-      table.insert(hls, { col = col, end_col = col + #size_str, hl = "DiredSize" })
+      table.insert(hls, { col = col, end_col = col + #size_str, hl = "ViredSize" })
       col = col + #size_str + 1
 
     elseif column == "mtime" then
       local time_str = utils.format_time(entry.mtime)
       table.insert(parts, time_str)
-      table.insert(hls, { col = col, end_col = col + #time_str, hl = "DiredDate" })
+      table.insert(hls, { col = col, end_col = col + #time_str, hl = "ViredDate" })
       col = col + #time_str + 1
     end
   end
@@ -305,11 +305,11 @@ function M.render_entry(entry, is_marked, columns, git_status)
     name = name .. " -> " .. (entry.link_target or "?")
   end
 
-  local name_hl = "DiredFile"
+  local name_hl = "ViredFile"
   if entry.type == "directory" then
-    name_hl = "DiredDirectory"
+    name_hl = "ViredDirectory"
   elseif entry.type == "link" then
-    name_hl = "DiredSymlink"
+    name_hl = "ViredSymlink"
   end
 
   table.insert(parts, name)
@@ -320,7 +320,7 @@ function M.render_entry(entry, is_marked, columns, git_status)
 
   -- If marked, add background highlight to entire line
   if is_marked then
-    table.insert(hls, { col = 0, end_col = #line, hl = "DiredMarkedFile" })
+    table.insert(hls, { col = 0, end_col = #line, hl = "ViredMarkedFile" })
   end
 
   return line, hls
@@ -328,7 +328,7 @@ end
 
 ---Get entry under cursor
 ---@param bufnr number
----@return DiredEntry|nil
+---@return ViredEntry|nil
 function M.get_entry_at_cursor(bufnr)
   local buf_data = M.buffers[bufnr]
   if not buf_data then
@@ -390,7 +390,7 @@ function M.navigate(bufnr, path)
   path = utils.absolute(path)
 
   if not fs.is_dir(path) then
-    vim.notify("dired: not a directory: " .. path, vim.log.levels.ERROR)
+    vim.notify("vired: not a directory: " .. path, vim.log.levels.ERROR)
     return
   end
 
@@ -401,7 +401,7 @@ function M.navigate(bufnr, path)
   buf_data.git_status = nil
 
   -- Update buffer name
-  vim.api.nvim_buf_set_name(bufnr, "dired://" .. path)
+  vim.api.nvim_buf_set_name(bufnr, "vired://" .. path)
 
   -- Refresh
   M.refresh(bufnr)
@@ -410,7 +410,7 @@ function M.navigate(bufnr, path)
   vim.api.nvim_win_set_cursor(0, { HEADER_LINES + 1, 0 })
 end
 
----Close dired buffer
+---Close vired buffer
 ---@param bufnr number
 function M.action_close(bufnr)
   vim.api.nvim_buf_delete(bufnr, { force = true })
@@ -480,7 +480,7 @@ end
 
 ---Get marked entries (or current entry if none marked)
 ---@param bufnr number
----@return DiredEntry[]
+---@return ViredEntry[]
 function M.get_marked_or_current(bufnr)
   local buf_data = M.buffers[bufnr]
   if not buf_data then
@@ -517,7 +517,7 @@ function M.action_move(bufnr)
     return
   end
 
-  local picker = require("dired.picker")
+  local picker = require("vired.picker")
   local prompt, default
 
   if #entries == 1 then
@@ -544,7 +544,7 @@ function M.action_move(bufnr)
 
         local ok, err = undo.rename_with_undo(entry.path, target)
         if not ok then
-          vim.notify("dired: " .. err, vim.log.levels.ERROR)
+          vim.notify("vired: " .. err, vim.log.levels.ERROR)
         end
       end
       -- Clear marks and refresh
@@ -566,7 +566,7 @@ function M.action_copy(bufnr)
     return
   end
 
-  local picker = require("dired.picker")
+  local picker = require("vired.picker")
   local prompt, default
 
   if #entries == 1 then
@@ -591,7 +591,7 @@ function M.action_copy(bufnr)
 
         local ok, err = undo.copy_with_undo(entry.path, target)
         if not ok then
-          vim.notify("dired: " .. err, vim.log.levels.ERROR)
+          vim.notify("vired: " .. err, vim.log.levels.ERROR)
         end
       end
       M.refresh(bufnr)
@@ -619,7 +619,7 @@ function M.action_delete(bufnr)
       for _, entry in ipairs(entries) do
         local ok, err = undo.delete_with_undo(entry.path)
         if not ok then
-          vim.notify("dired: " .. err, vim.log.levels.ERROR)
+          vim.notify("vired: " .. err, vim.log.levels.ERROR)
         end
       end
       -- Clear marks and refresh
@@ -643,7 +643,7 @@ function M.action_mkdir(bufnr)
       if ok then
         M.refresh(bufnr)
       else
-        vim.notify("dired: " .. err, vim.log.levels.ERROR)
+        vim.notify("vired: " .. err, vim.log.levels.ERROR)
       end
     end
   end)
@@ -661,14 +661,14 @@ function M.action_touch(bufnr)
       if ok then
         M.refresh(bufnr)
       else
-        vim.notify("dired: " .. err, vim.log.levels.ERROR)
+        vim.notify("vired: " .. err, vim.log.levels.ERROR)
       end
     end
   end)
 end
 
 function M.action_preview(bufnr)
-  local preview = require("dired.preview")
+  local preview = require("vired.preview")
   local entry = M.get_entry_at_cursor(bufnr)
 
   if entry then
@@ -679,7 +679,7 @@ end
 ---Enter edit mode to rename files by editing buffer
 ---@param bufnr number
 function M.action_edit(bufnr)
-  local edit = require("dired.edit")
+  local edit = require("vired.edit")
   local buf_data = M.buffers[bufnr]
 
   if not buf_data then
@@ -687,7 +687,7 @@ function M.action_edit(bufnr)
   end
 
   if edit.is_editing(bufnr) then
-    vim.notify("dired: Already in edit mode. :w to apply, :e! to cancel", vim.log.levels.WARN)
+    vim.notify("vired: Already in edit mode. :w to apply, :e! to cancel", vim.log.levels.WARN)
     return
   end
 
@@ -697,7 +697,7 @@ end
 ---Cancel edit mode and restore original buffer
 ---@param bufnr number
 function M.action_edit_cancel(bufnr)
-  local edit = require("dired.edit")
+  local edit = require("vired.edit")
   local buf_data = M.buffers[bufnr]
 
   if not buf_data then
@@ -715,7 +715,7 @@ end
 ---@param bufnr number
 function M.action_undo(bufnr)
   if not undo.can_undo() then
-    vim.notify("dired: Nothing to undo", vim.log.levels.INFO)
+    vim.notify("vired: Nothing to undo", vim.log.levels.INFO)
     return
   end
 
@@ -723,10 +723,10 @@ function M.action_undo(bufnr)
   local ok, err = undo.undo()
 
   if ok then
-    vim.notify("dired: Undone: " .. desc, vim.log.levels.INFO)
+    vim.notify("vired: Undone: " .. desc, vim.log.levels.INFO)
     M.refresh(bufnr)
   else
-    vim.notify("dired: Undo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    vim.notify("vired: Undo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
   end
 end
 
@@ -734,7 +734,7 @@ end
 ---@param bufnr number
 function M.action_redo(bufnr)
   if not undo.can_redo() then
-    vim.notify("dired: Nothing to redo", vim.log.levels.INFO)
+    vim.notify("vired: Nothing to redo", vim.log.levels.INFO)
     return
   end
 
@@ -742,10 +742,10 @@ function M.action_redo(bufnr)
   local ok, err = undo.redo()
 
   if ok then
-    vim.notify("dired: Redone: " .. desc, vim.log.levels.INFO)
+    vim.notify("vired: Redone: " .. desc, vim.log.levels.INFO)
     M.refresh(bufnr)
   else
-    vim.notify("dired: Redo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+    vim.notify("vired: Redo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
   end
 end
 
@@ -759,7 +759,7 @@ function M.action_help(bufnr)
   local action_descriptions = {
     ["actions.select"] = "Open file/directory",
     ["actions.parent"] = "Go to parent directory",
-    ["actions.close"] = "Close dired buffer",
+    ["actions.close"] = "Close vired buffer",
     ["actions.refresh"] = "Refresh directory listing",
     ["actions.toggle_hidden"] = "Toggle hidden files",
     ["actions.toggle_mark"] = "Toggle mark on file",
@@ -780,7 +780,7 @@ function M.action_help(bufnr)
 
   -- Build help lines
   local lines = {
-    "Dired Keybindings",
+    "Vired Keybindings",
     string.rep("-", 40),
     "",
   }
@@ -867,14 +867,14 @@ function M.action_help(bufnr)
     col = col,
     style = "minimal",
     border = cfg.float.border,
-    title = " Dired Help ",
+    title = " Vired Help ",
     title_pos = "center",
   }
 
   local win = vim.api.nvim_open_win(float_bufnr, true, win_opts)
 
   -- Apply highlights
-  local ns = vim.api.nvim_create_namespace("dired_help")
+  local ns = vim.api.nvim_create_namespace("vired_help")
   -- Title
   vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Title", 0, 0, -1)
   -- Category headers
