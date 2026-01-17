@@ -309,4 +309,156 @@ function M.async(fn)
   end
 end
 
+-- ============================================================================
+-- Fuzzy Matching
+-- ============================================================================
+
+---@class FuzzyMatch
+---@field str string The matched string
+---@field score number Match score (higher is better)
+---@field positions number[] 1-indexed positions of matched characters
+
+---Calculate fuzzy match score between pattern and string
+---Returns nil if no match, otherwise returns score and match positions
+---@param pattern string The search pattern
+---@param str string The string to match against
+---@return number|nil score, number[]|nil positions
+function M.fuzzy_match(pattern, str)
+  if not pattern or pattern == "" then
+    return 0, {}
+  end
+
+  if not str or str == "" then
+    return nil, nil
+  end
+
+  local pattern_lower = pattern:lower()
+  local str_lower = str:lower()
+  local pattern_len = #pattern_lower
+  local str_len = #str_lower
+
+  -- Quick check: pattern must be shorter or equal to string
+  if pattern_len > str_len then
+    return nil, nil
+  end
+
+  local positions = {}
+  local score = 0
+  local pattern_idx = 1
+  local prev_match_idx = 0
+  local consecutive_bonus = 0
+
+  for str_idx = 1, str_len do
+    if pattern_idx > pattern_len then
+      break
+    end
+
+    local pattern_char = pattern_lower:sub(pattern_idx, pattern_idx)
+    local str_char = str_lower:sub(str_idx, str_idx)
+
+    if pattern_char == str_char then
+      table.insert(positions, str_idx)
+
+      -- Base score for match
+      local match_score = 1
+
+      -- Bonus for consecutive matches
+      if str_idx == prev_match_idx + 1 then
+        consecutive_bonus = consecutive_bonus + 2
+        match_score = match_score + consecutive_bonus
+      else
+        consecutive_bonus = 0
+      end
+
+      -- Bonus for match at start of string
+      if str_idx == 1 then
+        match_score = match_score + 10
+      end
+
+      -- Bonus for match after separator (/, -, _, .)
+      if str_idx > 1 then
+        local prev_char = str:sub(str_idx - 1, str_idx - 1)
+        if prev_char == "/" or prev_char == "-" or prev_char == "_" or prev_char == "." or prev_char == " " then
+          match_score = match_score + 8
+        end
+      end
+
+      -- Bonus for uppercase match (camelCase)
+      local original_char = str:sub(str_idx, str_idx)
+      if original_char:match("%u") then
+        match_score = match_score + 5
+      end
+
+      -- Penalty for late matches (prefer earlier matches)
+      match_score = match_score - (str_idx / str_len) * 0.5
+
+      score = score + match_score
+      prev_match_idx = str_idx
+      pattern_idx = pattern_idx + 1
+    end
+  end
+
+  -- Check if all pattern characters were matched
+  if pattern_idx <= pattern_len then
+    return nil, nil
+  end
+
+  -- Bonus for shorter strings (exact-ish matches)
+  local length_ratio = pattern_len / str_len
+  score = score + length_ratio * 5
+
+  return score, positions
+end
+
+---Filter and sort a list of strings by fuzzy match
+---@param pattern string The search pattern
+---@param items string[] List of strings to filter
+---@param limit? number Maximum number of results (default: 50)
+---@return FuzzyMatch[] matches Sorted by score descending
+function M.fuzzy_filter(pattern, items, limit)
+  limit = limit or 50
+  local matches = {}
+
+  for _, item in ipairs(items) do
+    local score, positions = M.fuzzy_match(pattern, item)
+    if score then
+      table.insert(matches, {
+        str = item,
+        score = score,
+        positions = positions,
+      })
+    end
+  end
+
+  -- Sort by score descending
+  table.sort(matches, function(a, b)
+    return a.score > b.score
+  end)
+
+  -- Limit results
+  if #matches > limit then
+    local limited = {}
+    for i = 1, limit do
+      limited[i] = matches[i]
+    end
+    return limited
+  end
+
+  return matches
+end
+
+---Simple prefix match (fallback for when fuzzy is overkill)
+---@param prefix string The prefix to match
+---@param str string The string to check
+---@return boolean
+function M.prefix_match(prefix, str)
+  if not prefix or prefix == "" then
+    return true
+  end
+  if not str then
+    return false
+  end
+  return str:lower():sub(1, #prefix) == prefix:lower()
+end
+
 return M
