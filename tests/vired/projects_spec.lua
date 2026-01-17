@@ -1,7 +1,7 @@
-local projects = require("dired.projects")
-local config = require("dired.config")
+local projects = require("vired.projects")
+local config = require("vired.config")
 
-describe("dired.projects", function()
+describe("vired.projects", function()
   local temp_dir
   local test_projects_file
 
@@ -28,7 +28,7 @@ describe("dired.projects", function()
 
   describe("find_root", function()
     it("should find git repository root", function()
-      -- Use the actual dired.nvim repo
+      -- Use the actual vired.nvim repo
       local cwd = vim.fn.getcwd()
       local root, marker = projects.find_root(cwd)
 
@@ -45,7 +45,7 @@ describe("dired.projects", function()
 
     it("should find project from subdirectory", function()
       local cwd = vim.fn.getcwd()
-      local subdir = cwd .. "/lua/dired"
+      local subdir = cwd .. "/lua/vired"
       local root, marker = projects.find_root(subdir)
 
       assert.equals(cwd, root)

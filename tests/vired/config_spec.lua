@@ -1,6 +1,6 @@
-local config = require("dired.config")
+local config = require("vired.config")
 
-describe("dired.config", function()
+describe("vired.config", function()
   before_each(function()
     -- Reset config before each test
     config.options = {}

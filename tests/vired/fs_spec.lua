@@ -1,5 +1,5 @@
-local fs = require("dired.fs")
-local utils = require("dired.utils")
+local fs = require("vired.fs")
+local utils = require("vired.utils")
 
 -- Helper to create temp directory for tests
 local function create_temp_dir()
@@ -18,7 +18,7 @@ local function cleanup(path)
   end
 end
 
-describe("dired.fs", function()
+describe("vired.fs", function()
   local temp_dir
 
   before_each(function()

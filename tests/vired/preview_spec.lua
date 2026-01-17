@@ -1,6 +1,6 @@
-local preview = require("dired.preview")
+local preview = require("vired.preview")
 
-describe("dired.preview", function()
+describe("vired.preview", function()
   describe("is_open", function()
     it("should return false when preview is not open", function()
       preview.close() -- Ensure closed

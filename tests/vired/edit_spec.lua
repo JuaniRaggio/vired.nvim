@@ -1,6 +1,6 @@
-local edit = require("dired.edit")
+local edit = require("vired.edit")
 
-describe("dired.edit", function()
+describe("vired.edit", function()
   describe("parse_line_name", function()
     local columns = { "icon", "permissions", "size", "mtime" }
 

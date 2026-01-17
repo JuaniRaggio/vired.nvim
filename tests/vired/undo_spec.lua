@@ -1,8 +1,8 @@
-local undo = require("dired.undo")
-local fs = require("dired.fs")
-local config = require("dired.config")
+local undo = require("vired.undo")
+local fs = require("vired.fs")
+local config = require("vired.config")
 
-describe("dired.undo", function()
+describe("vired.undo", function()
   local temp_dir
   local trash_dir
 

@@ -1,6 +1,6 @@
-local utils = require("dired.utils")
+local utils = require("vired.utils")
 
-describe("dired.utils", function()
+describe("vired.utils", function()
   describe("normalize", function()
     it("should convert backslashes to forward slashes", function()
       assert.are.equal("/home/user/file", utils.normalize("\\home\\user\\file"))

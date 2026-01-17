@@ -1,6 +1,6 @@
-local lsp = require("dired.lsp")
+local lsp = require("vired.lsp")
 
-describe("dired.lsp", function()
+describe("vired.lsp", function()
   describe("is_rename_available", function()
     it("should return false for non-existent path", function()
       local available = lsp.is_rename_available("/nonexistent/path/file.txt")
