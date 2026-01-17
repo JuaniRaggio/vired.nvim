@@ -7,6 +7,7 @@ local highlights = require("vired.highlights")
 local git = require("vired.git")
 local undo = require("vired.undo")
 local watcher = require("vired.watcher")
+local jumplist = require("vired.jumplist")
 
 ---@class ViredBuffer
 ---@field bufnr number Buffer number
@@ -68,6 +69,9 @@ function M.create(path)
   -- Load and render
   M.refresh(bufnr)
 
+  -- Add to jumplist
+  jumplist.push(bufnr, path)
+
   -- Start file watcher for auto-refresh
   watcher.start(bufnr, path)
 
@@ -76,6 +80,7 @@ function M.create(path)
     buffer = bufnr,
     callback = function()
       watcher.stop(bufnr)
+      jumplist.clear(bufnr)
       M.buffers[bufnr] = nil
     end,
   })
@@ -160,6 +165,12 @@ function M.setup_keymaps(bufnr)
     end,
     ["actions.toggle_watch"] = function()
       M.action_toggle_watch(bufnr)
+    end,
+    ["actions.jump_back"] = function()
+      M.action_jump_back(bufnr)
+    end,
+    ["actions.jump_forward"] = function()
+      M.action_jump_forward(bufnr)
     end,
   }
 
@@ -400,7 +411,8 @@ end
 ---Navigate to a new directory
 ---@param bufnr number
 ---@param path string
-function M.navigate(bufnr, path)
+---@param skip_jumplist? boolean If true, don't add to jumplist (used for back/forward)
+function M.navigate(bufnr, path, skip_jumplist)
   local buf_data = M.buffers[bufnr]
   if not buf_data then
     return
@@ -421,6 +433,11 @@ function M.navigate(bufnr, path)
 
   -- Update buffer name
   vim.api.nvim_buf_set_name(bufnr, "vired://" .. path)
+
+  -- Add to jumplist (unless navigating through history)
+  if not skip_jumplist then
+    jumplist.push(bufnr, path)
+  end
 
   -- Update watcher to new path
   watcher.update(bufnr, path)
@@ -799,6 +816,8 @@ function M.action_help(bufnr)
     ["actions.redo"] = "Redo last operation",
     ["actions.help"] = "Show this help",
     ["actions.toggle_watch"] = "Toggle auto-refresh",
+    ["actions.jump_back"] = "Go back in history",
+    ["actions.jump_forward"] = "Go forward in history",
   }
 
   -- Build help lines
@@ -817,7 +836,7 @@ function M.action_help(bufnr)
 
   -- Group by category
   local categories = {
-    { name = "Navigation", actions = { "actions.select", "actions.parent", "actions.close", "actions.refresh" } },
+    { name = "Navigation", actions = { "actions.select", "actions.parent", "actions.close", "actions.refresh", "actions.jump_back", "actions.jump_forward" } },
     { name = "Marking", actions = { "actions.toggle_mark", "actions.unmark", "actions.unmark_all" } },
     { name = "File Operations", actions = { "actions.move", "actions.copy", "actions.delete", "actions.mkdir", "actions.touch" } },
     { name = "View", actions = { "actions.toggle_hidden", "actions.preview", "actions.toggle_watch" } },
@@ -928,6 +947,34 @@ function M.action_toggle_watch(bufnr)
   end
 
   watcher.toggle(bufnr, buf_data.path)
+end
+
+---Go back in directory history
+---@param bufnr number
+function M.action_jump_back(bufnr)
+  if not jumplist.can_go_back(bufnr) then
+    vim.notify("vired: Already at oldest directory", vim.log.levels.INFO)
+    return
+  end
+
+  local path = jumplist.back(bufnr)
+  if path then
+    M.navigate(bufnr, path, true) -- skip_jumplist = true
+  end
+end
+
+---Go forward in directory history
+---@param bufnr number
+function M.action_jump_forward(bufnr)
+  if not jumplist.can_go_forward(bufnr) then
+    vim.notify("vired: Already at newest directory", vim.log.levels.INFO)
+    return
+  end
+
+  local path = jumplist.forward(bufnr)
+  if path then
+    M.navigate(bufnr, path, true) -- skip_jumplist = true
+  end
 end
 
 return M

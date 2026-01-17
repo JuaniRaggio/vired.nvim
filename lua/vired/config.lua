@@ -155,6 +155,8 @@ M.defaults = {
     ["<C-y>"] = "actions.redo", -- Redo last undone operation
     ["?"] = "actions.help", -- Show help popup
     ["gw"] = "actions.toggle_watch", -- Toggle auto-refresh watcher
+    ["<C-o>"] = "actions.jump_back", -- Go back in directory history
+    ["<C-i>"] = "actions.jump_forward", -- Go forward in directory history
   },
 }
 
