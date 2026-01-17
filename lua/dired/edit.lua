@@ -21,7 +21,11 @@ local snapshots = {}
 ---@type table<number, boolean> Buffer -> is in edit mode
 local edit_mode = {}
 
+---@type table<number, number> Buffer -> autocmd ID for TextChanged
+local change_autocmds = {}
+
 local HEADER_LINES = 1
+local EDIT_NS = vim.api.nvim_create_namespace("dired_edit")
 
 -- ============================================================================
 -- Line Parsing
@@ -204,6 +208,83 @@ function M.clear_snapshot(bufnr)
 end
 
 -- ============================================================================
+-- Real-time Highlighting
+-- ============================================================================
+
+---Update highlights to show pending changes in real-time
+---@param bufnr number
+function M.update_highlights(bufnr)
+  local snapshot = snapshots[bufnr]
+  if not snapshot then
+    return
+  end
+
+  -- Clear existing edit highlights
+  vim.api.nvim_buf_clear_namespace(bufnr, EDIT_NS, 0, -1)
+
+  local columns = config.get().columns or {}
+  local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+  local current_line_count = #lines
+
+  -- Update header to show edit mode
+  if current_line_count > 0 then
+    local header = lines[1]
+    if header and not header:find("%[EDIT%]") then
+      -- Add visual indicator in header (we can't modify, just highlight)
+    end
+    vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditMode", 0, 0, -1)
+  end
+
+  -- Check each line for changes
+  for line_num = HEADER_LINES + 1, current_line_count do
+    local line = lines[line_num]
+    local original_entry = snapshot.entries[line_num]
+
+    if original_entry then
+      local new_name = M.parse_line_with_context(line, original_entry, columns)
+
+      if new_name == nil or (line and line:match("^%s*$")) then
+        -- Line was deleted/emptied - show as deleted
+        vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditDeleted", line_num - 1, 0, -1)
+      elseif new_name ~= original_entry.name then
+        -- Name changed - show as modified
+        vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditChanged", line_num - 1, 0, -1)
+      end
+    elseif line and not line:match("^%s*$") then
+      -- New line with content
+      vim.api.nvim_buf_add_highlight(bufnr, EDIT_NS, "DiredEditNew", line_num - 1, 0, -1)
+    end
+  end
+
+  -- Check for lines that were at the end but are now gone
+  for line_num, _ in pairs(snapshot.entries) do
+    if line_num > current_line_count then
+      -- This line was deleted (can't highlight non-existent line, but tracked in diff)
+    end
+  end
+end
+
+---Get a summary of current changes for status line or message
+---@param bufnr number
+---@return table {renamed: number, deleted: number, created: number}
+function M.get_change_summary(bufnr)
+  local operations = M.calculate_diff(bufnr)
+  local summary = { renamed = 0, deleted = 0, created = 0 }
+
+  for _, op in ipairs(operations) do
+    if op.type == "rename" then
+      summary.renamed = summary.renamed + 1
+    elseif op.type == "delete" then
+      summary.deleted = summary.deleted + 1
+    elseif op.type == "create" then
+      summary.created = summary.created + 1
+    end
+  end
+
+  return summary
+end
+
+-- ============================================================================
 -- Diff Calculation
 -- ============================================================================
 
@@ -322,7 +403,41 @@ function M.enter_edit_mode(bufnr, buf_data)
     end,
   })
 
-  vim.notify("dired: Edit mode enabled. :w to apply changes, :e! to cancel", vim.log.levels.INFO)
+  -- Set up real-time highlighting on text changes
+  local autocmd_id = vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+    buffer = bufnr,
+    callback = function()
+      M.update_highlights(bufnr)
+    end,
+  })
+  change_autocmds[bufnr] = autocmd_id
+
+  -- Initial highlight update
+  M.update_highlights(bufnr)
+
+  vim.notify("dired: Edit mode enabled. :w to apply, :e! to cancel. Changes highlighted in real-time.", vim.log.levels.INFO)
+end
+
+---Clean up edit mode resources
+---@param bufnr number
+local function cleanup_edit_mode(bufnr)
+  -- Clear highlight namespace
+  vim.api.nvim_buf_clear_namespace(bufnr, EDIT_NS, 0, -1)
+
+  -- Remove TextChanged autocmd
+  if change_autocmds[bufnr] then
+    pcall(vim.api.nvim_del_autocmd, change_autocmds[bufnr])
+    change_autocmds[bufnr] = nil
+  end
+
+  -- Clear snapshot
+  M.clear_snapshot(bufnr)
+
+  -- Reset buffer options
+  vim.bo[bufnr].modifiable = false
+  vim.bo[bufnr].buftype = "nofile"
+
+  edit_mode[bufnr] = nil
 end
 
 ---Exit edit mode without applying changes
@@ -333,14 +448,7 @@ function M.cancel_edit_mode(bufnr, buf_data)
     return
   end
 
-  -- Clear snapshot
-  M.clear_snapshot(bufnr)
-
-  -- Disable editing
-  vim.bo[bufnr].modifiable = false
-  vim.bo[bufnr].buftype = "nofile"
-
-  edit_mode[bufnr] = nil
+  cleanup_edit_mode(bufnr)
 
   -- Re-render to restore original state
   local buffer = require("dired.buffer")
@@ -408,6 +516,102 @@ function M.format_operations_summary(operations)
   return table.concat(lines, "\n")
 end
 
+---Show a visual diff preview in a floating window
+---@param bufnr number
+---@return number|nil preview_bufnr, number|nil preview_win
+function M.show_diff_preview(bufnr)
+  local operations = M.calculate_diff(bufnr)
+
+  if #operations == 0 then
+    vim.notify("dired: No changes to preview", vim.log.levels.INFO)
+    return nil, nil
+  end
+
+  -- Build preview content
+  local lines = {
+    "Pending Changes:",
+    string.rep("-", 40),
+    "",
+  }
+
+  local hl_lines = {} -- {line_num, hl_group}
+
+  for _, op in ipairs(operations) do
+    local line_num = #lines + 1
+
+    if op.type == "rename" then
+      local src_name = utils.basename(op.source)
+      local dest_name = utils.basename(op.dest)
+      table.insert(lines, string.format("  [RENAME] %s", src_name))
+      table.insert(hl_lines, { line_num - 1, "DiredEditChanged" })
+      table.insert(lines, string.format("        -> %s", dest_name))
+      table.insert(hl_lines, { #lines - 1, "DiredEditNew" })
+    elseif op.type == "delete" then
+      local name = utils.basename(op.source)
+      table.insert(lines, string.format("  [DELETE] %s", name))
+      table.insert(hl_lines, { line_num - 1, "DiredEditDeleted" })
+    elseif op.type == "create" then
+      local name = utils.basename(op.dest)
+      table.insert(lines, string.format("  [CREATE] %s", name))
+      table.insert(hl_lines, { line_num - 1, "DiredEditNew" })
+    end
+  end
+
+  table.insert(lines, "")
+  table.insert(lines, string.rep("-", 40))
+  table.insert(lines, string.format("Total: %d operation(s)", #operations))
+  table.insert(lines, "")
+  table.insert(lines, "Press :w to apply, :e! to cancel")
+
+  -- Calculate window size
+  local max_width = 0
+  for _, line in ipairs(lines) do
+    max_width = math.max(max_width, #line)
+  end
+  local width = math.min(max_width + 4, math.floor(vim.o.columns * 0.8))
+  local height = math.min(#lines, math.floor(vim.o.lines * 0.6))
+
+  -- Create preview buffer
+  local preview_buf = vim.api.nvim_create_buf(false, true)
+  vim.bo[preview_buf].buftype = "nofile"
+  vim.bo[preview_buf].bufhidden = "wipe"
+  vim.bo[preview_buf].swapfile = false
+
+  vim.api.nvim_buf_set_lines(preview_buf, 0, -1, false, lines)
+  vim.bo[preview_buf].modifiable = false
+
+  -- Apply highlights
+  local preview_ns = vim.api.nvim_create_namespace("dired_preview")
+  for _, hl in ipairs(hl_lines) do
+    vim.api.nvim_buf_add_highlight(preview_buf, preview_ns, hl[2], hl[1], 0, -1)
+  end
+
+  -- Create floating window
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+
+  local preview_win = vim.api.nvim_open_win(preview_buf, false, {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = "rounded",
+    title = " Diff Preview ",
+    title_pos = "center",
+  })
+
+  -- Auto-close after delay or on any key
+  vim.defer_fn(function()
+    if vim.api.nvim_win_is_valid(preview_win) then
+      vim.api.nvim_win_close(preview_win, true)
+    end
+  end, 5000)
+
+  return preview_buf, preview_win
+end
+
 ---Execute filesystem operations
 ---@param bufnr number
 ---@param buf_data table
@@ -472,14 +676,7 @@ end
 ---@param bufnr number
 ---@param buf_data table
 function M.exit_edit_mode(bufnr, buf_data)
-  -- Clear snapshot
-  M.clear_snapshot(bufnr)
-
-  -- Disable editing
-  vim.bo[bufnr].modifiable = false
-  vim.bo[bufnr].buftype = "nofile"
-
-  edit_mode[bufnr] = nil
+  cleanup_edit_mode(bufnr)
 
   -- Refresh buffer
   local buffer = require("dired.buffer")
