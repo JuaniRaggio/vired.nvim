@@ -65,7 +65,7 @@ describe("dired.config", function()
 
     it("should have valid path_picker config", function()
       local pp = config.defaults.path_picker
-      assert.is_true(pp.backend == "lua" or pp.backend == "fzf" or pp.backend == "telescope")
+      assert.is_true(pp.backend == "auto" or pp.backend == "lua" or pp.backend == "fzf" or pp.backend == "telescope")
       assert.is_table(pp.sources)
       assert.is_boolean(pp.create_directories)
       assert.is_boolean(pp.show_hidden)
