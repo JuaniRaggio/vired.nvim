@@ -21,6 +21,10 @@ function M.setup(opts)
   end
 
   config.setup(opts)
+
+  -- Initialize highlights
+  require("dired.highlights").setup()
+
   M._setup_commands()
   M._setup_autocommands()
 
