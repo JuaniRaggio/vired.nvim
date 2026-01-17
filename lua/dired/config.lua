@@ -140,6 +140,7 @@ M.defaults = {
     ["i"] = "actions.edit", -- Enter wdired-like edit mode
     ["<C-z>"] = "actions.undo", -- Undo last file operation
     ["<C-y>"] = "actions.redo", -- Redo last undone operation
+    ["?"] = "actions.help", -- Show help popup
   },
 }
 

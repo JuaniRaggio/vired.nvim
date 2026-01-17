@@ -139,6 +139,9 @@ function M.setup_keymaps(bufnr)
     ["actions.redo"] = function()
       M.action_redo(bufnr)
     end,
+    ["actions.help"] = function()
+      M.action_help(bufnr)
+    end,
   }
 
   for key, action in pairs(keymaps) do
@@ -742,6 +745,153 @@ function M.action_redo(bufnr)
     M.refresh(bufnr)
   else
     vim.notify("dired: Redo failed: " .. (err or "unknown error"), vim.log.levels.ERROR)
+  end
+end
+
+---Show help popup with all keybindings
+---@param bufnr number
+function M.action_help(bufnr)
+  local cfg = config.get()
+  local keymaps = cfg.keymaps
+
+  -- Action descriptions
+  local action_descriptions = {
+    ["actions.select"] = "Open file/directory",
+    ["actions.parent"] = "Go to parent directory",
+    ["actions.close"] = "Close dired buffer",
+    ["actions.refresh"] = "Refresh directory listing",
+    ["actions.toggle_hidden"] = "Toggle hidden files",
+    ["actions.toggle_mark"] = "Toggle mark on file",
+    ["actions.unmark"] = "Unmark current file",
+    ["actions.unmark_all"] = "Unmark all files",
+    ["actions.move"] = "Move/rename file(s)",
+    ["actions.copy"] = "Copy file(s)",
+    ["actions.delete"] = "Delete file(s) (to trash)",
+    ["actions.mkdir"] = "Create directory",
+    ["actions.touch"] = "Create file",
+    ["actions.preview"] = "Preview file",
+    ["actions.edit"] = "Enter edit mode (wdired)",
+    ["actions.edit_cancel"] = "Cancel edit mode",
+    ["actions.undo"] = "Undo last operation",
+    ["actions.redo"] = "Redo last operation",
+    ["actions.help"] = "Show this help",
+  }
+
+  -- Build help lines
+  local lines = {
+    "Dired Keybindings",
+    string.rep("-", 40),
+    "",
+  }
+
+  -- Sort keymaps by action for consistent display
+  local sorted_keys = {}
+  for key, _ in pairs(keymaps) do
+    table.insert(sorted_keys, key)
+  end
+  table.sort(sorted_keys)
+
+  -- Group by category
+  local categories = {
+    { name = "Navigation", actions = { "actions.select", "actions.parent", "actions.close", "actions.refresh" } },
+    { name = "Marking", actions = { "actions.toggle_mark", "actions.unmark", "actions.unmark_all" } },
+    { name = "File Operations", actions = { "actions.move", "actions.copy", "actions.delete", "actions.mkdir", "actions.touch" } },
+    { name = "View", actions = { "actions.toggle_hidden", "actions.preview" } },
+    { name = "Edit Mode", actions = { "actions.edit", "actions.edit_cancel" } },
+    { name = "Undo/Redo", actions = { "actions.undo", "actions.redo" } },
+    { name = "Help", actions = { "actions.help" } },
+  }
+
+  -- Build reverse map: action -> key
+  local action_to_key = {}
+  for key, action in pairs(keymaps) do
+    action_to_key[action] = key
+  end
+
+  for _, category in ipairs(categories) do
+    local has_items = false
+    for _, action in ipairs(category.actions) do
+      if action_to_key[action] then
+        has_items = true
+        break
+      end
+    end
+
+    if has_items then
+      table.insert(lines, category.name .. ":")
+      for _, action in ipairs(category.actions) do
+        local key = action_to_key[action]
+        if key then
+          local desc = action_descriptions[action] or action
+          -- Format key nicely
+          local key_display = key
+          if #key_display < 8 then
+            key_display = key_display .. string.rep(" ", 8 - #key_display)
+          end
+          table.insert(lines, "  " .. key_display .. "  " .. desc)
+        end
+      end
+      table.insert(lines, "")
+    end
+  end
+
+  table.insert(lines, string.rep("-", 40))
+  table.insert(lines, "Press q, ? or <Esc> to close")
+
+  -- Calculate window size
+  local max_width = 0
+  for _, line in ipairs(lines) do
+    max_width = math.max(max_width, #line)
+  end
+  local width = max_width + 4
+  local height = #lines
+
+  -- Create floating window
+  local float_bufnr = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(float_bufnr, 0, -1, false, lines)
+  vim.bo[float_bufnr].modifiable = false
+  vim.bo[float_bufnr].buftype = "nofile"
+  vim.bo[float_bufnr].bufhidden = "wipe"
+
+  -- Center the window
+  local ui = vim.api.nvim_list_uis()[1]
+  local row = math.floor((ui.height - height) / 2)
+  local col = math.floor((ui.width - width) / 2)
+
+  local win_opts = {
+    relative = "editor",
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = "minimal",
+    border = cfg.float.border,
+    title = " Dired Help ",
+    title_pos = "center",
+  }
+
+  local win = vim.api.nvim_open_win(float_bufnr, true, win_opts)
+
+  -- Apply highlights
+  local ns = vim.api.nvim_create_namespace("dired_help")
+  -- Title
+  vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Title", 0, 0, -1)
+  -- Category headers
+  for i, line in ipairs(lines) do
+    if line:match("^%w.*:$") then
+      vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Statement", i - 1, 0, -1)
+    elseif line:match("^  %S") then
+      -- Key highlight
+      vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Special", i - 1, 2, 12)
+    end
+  end
+
+  -- Close keymaps
+  local close_keys = { "q", "?", "<Esc>" }
+  for _, key in ipairs(close_keys) do
+    vim.keymap.set("n", key, function()
+      vim.api.nvim_win_close(win, true)
+    end, { buffer = float_bufnr, noremap = true, silent = true })
   end
 end
 
