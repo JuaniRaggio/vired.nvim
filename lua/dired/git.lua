@@ -69,7 +69,8 @@ function M.parse_porcelain(output, repo_root)
       local file_path = line:sub(4)
 
       -- Handle renamed files (format: "R  old -> new")
-      local arrow_pos = file_path:find(" -> ")
+      -- Use plain string matching (4th param = true) because "-" is a pattern metacharacter
+      local arrow_pos = file_path:find(" -> ", 1, true)
       if arrow_pos then
         file_path = file_path:sub(arrow_pos + 4)
       end
