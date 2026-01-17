@@ -4,6 +4,7 @@ local fs = require("dired.fs")
 local utils = require("dired.utils")
 local config = require("dired.config")
 local highlights = require("dired.highlights")
+local git = require("dired.git")
 
 ---@class DiredBuffer
 ---@field bufnr number Buffer number
@@ -11,6 +12,8 @@ local highlights = require("dired.highlights")
 ---@field entries DiredEntry[] Directory entries
 ---@field show_hidden boolean Show hidden files
 ---@field marks table<string, boolean> Marked files (path -> true)
+---@field git_root string|nil Git repository root (nil if not in repo)
+---@field git_status table<string, GitFileStatus>|nil Git status map
 
 ---@type table<number, DiredBuffer>
 M.buffers = {}
@@ -43,6 +46,9 @@ function M.create(path)
   vim.bo[bufnr].swapfile = false
   vim.bo[bufnr].modifiable = false
 
+  -- Detect git repository
+  local git_root = git.find_repo_root(path)
+
   -- Store buffer data
   M.buffers[bufnr] = {
     bufnr = bufnr,
@@ -50,6 +56,8 @@ function M.create(path)
     entries = {},
     show_hidden = config.get().path_picker.show_hidden,
     marks = {},
+    git_root = git_root,
+    git_status = nil,
   }
 
   -- Setup keymaps
@@ -145,7 +153,20 @@ function M.refresh(bufnr)
 
   buf_data.entries = entries
 
-  -- Render buffer
+  -- Load git status asynchronously if in a git repo
+  if buf_data.git_root then
+    git.invalidate_cache(buf_data.git_root)
+    git.get_status_async(buf_data.git_root, function(status_map, git_err)
+      if not vim.api.nvim_buf_is_valid(bufnr) then
+        return
+      end
+      buf_data.git_status = status_map
+      -- Re-render with git status
+      M.render(bufnr)
+    end)
+  end
+
+  -- Render buffer (may re-render after git status loads)
   M.render(bufnr)
 end
 
@@ -164,14 +185,18 @@ function M.render(bufnr)
   -- Header line
   local header = "  " .. buf_data.path
   if buf_data.show_hidden then
-    header = header .. " [showing hidden]"
+    header = header .. " [hidden]"
+  end
+  if buf_data.git_root then
+    header = header .. " [git]"
   end
   table.insert(lines, header)
   table.insert(hl_marks, { line = 0, col = 0, end_col = #header, hl = "DiredHeader" })
 
   -- Render each entry
   for i, entry in ipairs(buf_data.entries) do
-    local line, entry_hls = M.render_entry(entry, buf_data.marks[entry.path], cfg.columns)
+    local file_git_status = buf_data.git_status and buf_data.git_status[entry.path]
+    local line, entry_hls = M.render_entry(entry, buf_data.marks[entry.path], cfg.columns, file_git_status)
     table.insert(lines, line)
 
     -- Adjust highlight line numbers (offset by header)
@@ -200,8 +225,9 @@ end
 ---@param entry DiredEntry
 ---@param is_marked boolean
 ---@param columns string[]
+---@param git_status GitFileStatus|nil
 ---@return string line, table[] highlights
-function M.render_entry(entry, is_marked, columns)
+function M.render_entry(entry, is_marked, columns, git_status)
   local parts = {}
   local hls = {}
   local col = 0
@@ -213,6 +239,14 @@ function M.render_entry(entry, is_marked, columns)
     table.insert(hls, { col = col, end_col = col + 1, hl = "DiredMarked" })
   end
   col = col + 2 -- mark + space
+
+  -- Git status indicator
+  local git_char, git_hl = git.get_status_display(git_status)
+  table.insert(parts, git_char)
+  if git_char ~= " " then
+    table.insert(hls, { col = col, end_col = col + 1, hl = git_hl })
+  end
+  col = col + 2 -- git status + space
 
   -- Build columns
   for _, column in ipairs(columns) do
@@ -347,6 +381,8 @@ function M.navigate(bufnr, path)
   -- Update buffer
   buf_data.path = path
   buf_data.marks = {} -- Clear marks on navigation
+  buf_data.git_root = git.find_repo_root(path)
+  buf_data.git_status = nil
 
   -- Update buffer name
   vim.api.nvim_buf_set_name(bufnr, "dired://" .. path)
@@ -614,8 +650,12 @@ function M.action_touch(bufnr)
 end
 
 function M.action_preview(bufnr)
-  -- TODO: Implement preview in Phase 4
-  vim.notify("dired: preview not implemented yet", vim.log.levels.INFO)
+  local preview = require("dired.preview")
+  local entry = M.get_entry_at_cursor(bufnr)
+
+  if entry then
+    preview.toggle(entry.path)
+  end
 end
 
 return M
