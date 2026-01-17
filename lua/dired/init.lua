@@ -120,26 +120,26 @@ end
 ---@field on_select? function Callback when path is selected
 ---@field create_if_missing? boolean Offer to create non-existent paths
 function M.pick_path(opts)
-  local path_picker = require("dired.path_picker")
+  local picker = require("dired.picker")
   opts = opts or {}
   opts.cwd = opts.cwd or vim.loop.cwd()
   opts.on_select = opts.on_select or function() end
-  path_picker.open(opts)
+  picker.open(opts)
 end
 
 ---Open interactive directory picker, then open dired in selected directory
 ---This provides a Vertico-like experience for directory navigation
 function M.pick_and_open()
-  local path_picker = require("dired.path_picker")
+  local picker = require("dired.picker")
   local cwd = vim.loop.cwd()
 
-  path_picker.open({
+  picker.open({
     prompt = "Open directory: ",
     default = cwd .. "/",
     cwd = cwd,
     create_if_missing = true,
     on_select = function(path)
-      -- path_picker already opens dired for directories via confirm()
+      -- Backends open dired for directories directly
       -- but if somehow we get here with a file, open its parent
       local fs = require("dired.fs")
       if fs.is_file(path) then

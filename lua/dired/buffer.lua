@@ -514,7 +514,7 @@ function M.action_move(bufnr)
     return
   end
 
-  local path_picker = require("dired.path_picker")
+  local picker = require("dired.picker")
   local prompt, default
 
   if #entries == 1 then
@@ -527,7 +527,7 @@ function M.action_move(bufnr)
     default = buf_data.path .. "/"
   end
 
-  path_picker.open({
+  picker.open({
     prompt = prompt,
     default = default,
     cwd = buf_data.path,
@@ -563,7 +563,7 @@ function M.action_copy(bufnr)
     return
   end
 
-  local path_picker = require("dired.path_picker")
+  local picker = require("dired.picker")
   local prompt, default
 
   if #entries == 1 then
@@ -574,7 +574,7 @@ function M.action_copy(bufnr)
     default = buf_data.path .. "/"
   end
 
-  path_picker.open({
+  picker.open({
     prompt = prompt,
     default = default,
     cwd = buf_data.path,

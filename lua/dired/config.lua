@@ -1,5 +1,5 @@
 ---@class DiredPathPickerConfig
----@field backend "fzf"|"lua"|"telescope"
+---@field backend "auto"|"telescope"|"fzf"|"lua"
 ---@field sources string[]
 ---@field create_directories boolean
 ---@field show_hidden boolean
@@ -56,7 +56,7 @@ M.defaults = {
 
   -- Path picker configuration
   path_picker = {
-    backend = "lua", -- "fzf" | "lua" | "telescope"
+    backend = "auto", -- "auto" | "telescope" | "fzf" | "lua"
     sources = { "filesystem", "recent", "bookmarks", "buffers" },
     create_directories = true,
     show_hidden = false,
