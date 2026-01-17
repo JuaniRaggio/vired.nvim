@@ -658,4 +658,39 @@ function M.action_preview(bufnr)
   end
 end
 
+---Enter edit mode to rename files by editing buffer
+---@param bufnr number
+function M.action_edit(bufnr)
+  local edit = require("dired.edit")
+  local buf_data = M.buffers[bufnr]
+
+  if not buf_data then
+    return
+  end
+
+  if edit.is_editing(bufnr) then
+    vim.notify("dired: Already in edit mode. :w to apply, :e! to cancel", vim.log.levels.WARN)
+    return
+  end
+
+  edit.enter_edit_mode(bufnr, buf_data)
+end
+
+---Cancel edit mode and restore original buffer
+---@param bufnr number
+function M.action_edit_cancel(bufnr)
+  local edit = require("dired.edit")
+  local buf_data = M.buffers[bufnr]
+
+  if not buf_data then
+    return
+  end
+
+  if not edit.is_editing(bufnr) then
+    return
+  end
+
+  edit.cancel_edit_mode(bufnr, buf_data)
+end
+
 return M
