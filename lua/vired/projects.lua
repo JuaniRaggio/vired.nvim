@@ -707,8 +707,15 @@ function M.pick_project()
     border = cfg.float.border,
   })
 
-  -- Initialize with all projects
-  filtered_projects = project_list
+  -- Initialize with all projects (wrapped in expected structure)
+  filtered_projects = {}
+  for _, project in ipairs(project_list) do
+    table.insert(filtered_projects, {
+      project = project,
+      score = 0,
+      positions = {},
+    })
+  end
   render_results()
 
   -- Setup prompt
