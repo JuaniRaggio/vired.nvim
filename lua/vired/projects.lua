@@ -478,7 +478,12 @@ local picker_win = nil
 local results_buf = nil
 ---@type number|nil Results window
 local results_win = nil
----@type ViredProject[] Current filtered projects
+---@class FilteredProject
+---@field project ViredProject
+---@field score number
+---@field positions number[]
+
+---@type FilteredProject[] Current filtered projects with match info
 local filtered_projects = {}
 ---@type number Selected index (1-based)
 local selected_idx = 1
@@ -512,10 +517,46 @@ local function render_results()
   end
 
   local lines = {}
-  for i, project in ipairs(filtered_projects) do
+  local highlights = {}
+
+  for i, item in ipairs(filtered_projects) do
     local prefix = i == selected_idx and "> " or "  "
-    local line = string.format("%s%s", prefix, project.name)
+    local line = string.format("%s%s", prefix, item.project.name)
     table.insert(lines, line)
+
+    -- Highlight for directory (project name)
+    table.insert(highlights, {
+      line = i - 1,
+      col = #prefix,
+      end_col = #line,
+      hl = "ViredDirectory",
+      priority = 10,
+    })
+
+    -- Highlight matched characters if matching name
+    if item.positions and #item.positions > 0 and item.match_field == "name" then
+      for _, pos in ipairs(item.positions) do
+        local col = #prefix + pos - 1
+        table.insert(highlights, {
+          line = i - 1,
+          col = col,
+          end_col = col + 1,
+          hl = "ViredPickerMatch",
+          priority = 20,
+        })
+      end
+    end
+
+    -- Selection background (lowest priority)
+    if i == selected_idx then
+      table.insert(highlights, {
+        line = i - 1,
+        col = 0,
+        end_col = #line,
+        hl = "ViredPickerSelection",
+        priority = 5,
+      })
+    end
   end
 
   if #lines == 0 then
@@ -526,43 +567,73 @@ local function render_results()
   vim.api.nvim_buf_set_lines(results_buf, 0, -1, false, lines)
   vim.bo[results_buf].modifiable = false
 
-  -- Apply highlights
+  -- Apply highlights using extmarks
   local ns = vim.api.nvim_create_namespace("vired_project_picker")
   vim.api.nvim_buf_clear_namespace(results_buf, ns, 0, -1)
 
-  for i, _ in ipairs(filtered_projects) do
-    if i == selected_idx then
-      vim.api.nvim_buf_add_highlight(results_buf, ns, "Visual", i - 1, 0, -1)
-    end
+  for _, hl in ipairs(highlights) do
+    pcall(vim.api.nvim_buf_set_extmark, results_buf, ns, hl.line, hl.col, {
+      end_col = hl.end_col,
+      hl_group = hl.hl,
+      priority = hl.priority or 10,
+    })
   end
 
   -- Show path in virtual text for selected item
   if selected_idx >= 1 and selected_idx <= #filtered_projects then
-    local project = filtered_projects[selected_idx]
+    local item = filtered_projects[selected_idx]
     vim.api.nvim_buf_set_extmark(results_buf, ns, selected_idx - 1, 0, {
-      virt_text = { { "  " .. project.path, "Comment" } },
+      virt_text = { { "  " .. item.project.path, "Comment" } },
       virt_text_pos = "eol",
     })
   end
 end
 
----Filter projects based on input
+---Filter projects based on input with fuzzy matching
 ---@param input string
 local function filter_projects(input)
   local project_list = M.list("recent")
-  input = input:lower()
 
   if input == "" then
-    filtered_projects = project_list
+    -- No filter, show all with no match positions
+    filtered_projects = {}
+    for _, project in ipairs(project_list) do
+      table.insert(filtered_projects, {
+        project = project,
+        score = 0,
+        positions = {},
+      })
+    end
   else
     filtered_projects = {}
     for _, project in ipairs(project_list) do
-      local name_lower = project.name:lower()
-      local path_lower = project.path:lower()
-      if name_lower:find(input, 1, true) or path_lower:find(input, 1, true) then
-        table.insert(filtered_projects, project)
+      -- Try matching against name first (higher priority)
+      local score, positions = utils.fuzzy_match(input, project.name)
+      if score then
+        table.insert(filtered_projects, {
+          project = project,
+          score = score + 10, -- Bonus for name match
+          positions = positions,
+          match_field = "name",
+        })
+      else
+        -- Try matching against path
+        score, positions = utils.fuzzy_match(input, project.path)
+        if score then
+          table.insert(filtered_projects, {
+            project = project,
+            score = score,
+            positions = positions,
+            match_field = "path",
+          })
+        end
       end
     end
+
+    -- Sort by score descending
+    table.sort(filtered_projects, function(a, b)
+      return a.score > b.score
+    end)
   end
 
   -- Reset selection
@@ -573,11 +644,11 @@ end
 ---Select current project and open it
 local function select_project()
   if selected_idx >= 1 and selected_idx <= #filtered_projects then
-    local project = filtered_projects[selected_idx]
+    local item = filtered_projects[selected_idx]
     close_picker()
-    M.touch(project.path)
+    M.touch(item.project.path)
     local vired = require("vired")
-    vired.open(project.path)
+    vired.open(item.project.path)
   end
 end
 
@@ -698,9 +769,9 @@ function M.pick_project()
   -- Delete project with <C-d>
   vim.keymap.set("i", "<C-d>", function()
     if selected_idx >= 1 and selected_idx <= #filtered_projects then
-      local project = filtered_projects[selected_idx]
-      M.remove(project.path)
-      vim.notify(string.format("vired: Removed '%s'", project.name), vim.log.levels.INFO)
+      local item = filtered_projects[selected_idx]
+      M.remove(item.project.path)
+      vim.notify(string.format("vired: Removed '%s'", item.project.name), vim.log.levels.INFO)
       -- Re-filter to update list
       local lines = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)
       local input = (lines[1] or ""):gsub("^ Project: ", "")

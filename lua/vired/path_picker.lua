@@ -414,7 +414,31 @@ local function render_results()
 
     table.insert(lines, line)
 
-    -- Highlight matched characters
+    -- Determine highlight group based on type
+    local type_hl = "ViredFile"
+    if result.is_dot then
+      type_hl = "ViredDirectory"
+    elseif result.str:sub(-1) == "/" then
+      type_hl = "ViredDirectory"
+    elseif result.str:match("^.+%.%w+$") then
+      -- Check for common executable/special extensions
+      local ext = result.str:match("%.(%w+)$")
+      if ext and vim.tbl_contains({ "sh", "bash", "zsh", "fish", "py", "rb", "pl" }, ext) then
+        type_hl = "ViredExecutable"
+      end
+    end
+
+    -- Apply type highlight to the path portion
+    local path_start = #prefix + #icon + 1
+    table.insert(highlights, {
+      line = i - 1,
+      col = path_start,
+      end_col = #line,
+      hl = type_hl,
+      priority = 10,
+    })
+
+    -- Highlight matched characters (higher priority)
     if result.positions and #result.positions > 0 then
       local offset = #prefix + #icon + 1 -- account for prefix and icon
       -- Adjust positions for the basename display in the full path
@@ -426,17 +450,19 @@ local function render_results()
           col = col,
           end_col = col + 1,
           hl = "ViredPickerMatch",
+          priority = 20,
         })
       end
     end
 
-    -- Highlight selected line
+    -- Highlight selected line background (lowest priority so text colors show through)
     if i == selected_idx then
       table.insert(highlights, {
         line = i - 1,
         col = 0,
         end_col = #line,
         hl = "ViredPickerSelection",
+        priority = 5,
       })
     end
   end
@@ -481,12 +507,16 @@ local function render_results()
   vim.api.nvim_buf_set_lines(results_buf, 0, -1, false, lines)
   vim.bo[results_buf].modifiable = false
 
-  -- Apply highlights
+  -- Apply highlights using extmarks with priority
   local ns = vim.api.nvim_create_namespace("vired_picker")
   vim.api.nvim_buf_clear_namespace(results_buf, ns, 0, -1)
 
   for _, hl in ipairs(highlights) do
-    pcall(vim.api.nvim_buf_add_highlight, results_buf, ns, hl.hl, hl.line, hl.col, hl.end_col)
+    pcall(vim.api.nvim_buf_set_extmark, results_buf, ns, hl.line, hl.col, {
+      end_col = hl.end_col,
+      hl_group = hl.hl,
+      priority = hl.priority or 10,
+    })
   end
 
   -- Resize results window based on content
