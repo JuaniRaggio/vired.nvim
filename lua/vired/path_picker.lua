@@ -205,6 +205,22 @@ local function get_completions(input, cwd)
   -- If no pattern, return filesystem items sorted
   if pattern == "" then
     local completions = {}
+
+    -- Add "." entry to open vired in current directory
+    local current_dir = input
+    if not utils.is_absolute(current_dir) then
+      current_dir = utils.join(cwd, current_dir)
+    end
+    if fs.is_dir(current_dir:gsub("/$", "")) then
+      table.insert(completions, {
+        str = ".  [Open vired here]",
+        score = 100,
+        positions = {},
+        source = "filesystem",
+        is_dot = true,
+      })
+    end
+
     for _, item in ipairs(all_items) do
       if item.source == "filesystem" then
         table.insert(completions, {
@@ -215,8 +231,10 @@ local function get_completions(input, cwd)
         })
       end
     end
-    -- Sort directories first, then alphabetically
+    -- Sort directories first, then alphabetically (but keep "." at top)
     table.sort(completions, function(a, b)
+      if a.is_dot then return true end
+      if b.is_dot then return false end
       local a_is_dir = a.str:sub(-1) == "/"
       local b_is_dir = b.str:sub(-1) == "/"
       if a_is_dir and not b_is_dir then
@@ -351,7 +369,17 @@ local function update_preview()
 
   if selected_idx <= #results then
     local selected = results[selected_idx]
-    render_preview(selected.str)
+    -- Handle "." entry - preview the current directory
+    if selected.is_dot then
+      local input = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)[1] or ""
+      local path = utils.expand(input)
+      if not utils.is_absolute(path) and picker_opts and picker_opts.cwd then
+        path = utils.join(picker_opts.cwd, path)
+      end
+      render_preview(path:gsub("/$", ""))
+    else
+      render_preview(selected.str)
+    end
   else
     -- "Create" option selected
     render_preview(nil)
@@ -546,6 +574,13 @@ local function complete_selected()
   end
 
   local selected = results[selected_idx]
+
+  -- Handle "." entry - Tab on "." acts like Enter (open vired)
+  if selected.is_dot then
+    confirm()
+    return
+  end
+
   local path = selected.str
 
   -- If it's a directory, complete it and stay in picker to continue navigating
@@ -630,6 +665,26 @@ local function confirm()
     path = utils.join(picker_opts.cwd, path)
   end
 
+  -- Handle "." special case - open vired in current input directory
+  if selected_idx <= #results and results[selected_idx] then
+    local selected = results[selected_idx]
+    if selected.is_dot then
+      -- Get the directory from current input
+      local dir = input
+      if dir:sub(-1) ~= "/" then
+        dir = utils.parent(path)
+      else
+        dir = path:gsub("/$", "")
+      end
+      M.close()
+      local vired_ok, vired = pcall(require, "vired")
+      if vired_ok and vired.open then
+        vired.open(dir)
+      end
+      return
+    end
+  end
+
   -- Check if selecting "create" option
   local is_create = selected_idx > #results and picker_opts.create_if_missing and not fs.exists(path)
 
@@ -668,9 +723,9 @@ local function confirm()
         vim.cmd("edit " .. vim.fn.fnameescape(path))
       end
     else
-      local on_select = picker_opts.on_select
+      -- It's a file - open it directly
       M.close()
-      on_select(path)
+      vim.cmd("edit " .. vim.fn.fnameescape(path))
     end
   end
 end
