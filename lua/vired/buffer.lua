@@ -788,72 +788,11 @@ function M.action_redo(bufnr)
   end
 end
 
----Show help popup with all keybindings
+---Show help popup with all keybindings (multi-column layout)
 ---@param bufnr number
 function M.action_help(bufnr)
   local cfg = config.get()
   local keymaps = cfg.keymaps
-
-  -- Action descriptions
-  local action_descriptions = {
-    ["actions.select"] = "Open file/directory",
-    ["actions.parent"] = "Go to parent directory",
-    ["actions.close"] = "Close vired buffer",
-    ["actions.refresh"] = "Refresh directory listing",
-    ["actions.toggle_hidden"] = "Toggle hidden files",
-    ["actions.toggle_mark"] = "Toggle mark on file",
-    ["actions.unmark"] = "Unmark current file",
-    ["actions.unmark_all"] = "Unmark all files",
-    ["actions.move"] = "Move/rename file(s)",
-    ["actions.copy"] = "Copy file(s)",
-    ["actions.delete"] = "Delete file(s) (to trash)",
-    ["actions.mkdir"] = "Create directory",
-    ["actions.touch"] = "Create file",
-    ["actions.preview"] = "Preview file",
-    ["actions.edit"] = "Edit mode (full vim)",
-    ["actions.edit_cancel"] = "Cancel edit mode",
-    ["actions.undo"] = "Undo last operation",
-    ["actions.redo"] = "Redo last operation",
-    ["actions.help"] = "Show this help",
-    ["actions.toggle_watch"] = "Toggle auto-refresh",
-    ["actions.jump_back"] = "Go back in history",
-    ["actions.jump_forward"] = "Go forward in history",
-  }
-
-  -- Build help lines
-  local lines = {
-    "Vired Help",
-    string.rep("-", 50),
-    "",
-    "Commands:",
-    "  :ViredProjects      Open project picker",
-    "  :ViredProjectAdd    Bookmark current project",
-    "  :ViredProjectRemove Remove project bookmark",
-    "  :ViredUndo          Undo last operation",
-    "  :ViredRedo          Redo last operation",
-    "  :ViredOpen          Open with path picker",
-    "",
-    "Keybindings:",
-    "",
-  }
-
-  -- Sort keymaps by action for consistent display
-  local sorted_keys = {}
-  for key, _ in pairs(keymaps) do
-    table.insert(sorted_keys, key)
-  end
-  table.sort(sorted_keys)
-
-  -- Group by category
-  local categories = {
-    { name = "Navigation", actions = { "actions.select", "actions.parent", "actions.close", "actions.refresh", "actions.jump_back", "actions.jump_forward" } },
-    { name = "Marking", actions = { "actions.toggle_mark", "actions.unmark", "actions.unmark_all" } },
-    { name = "File Operations", actions = { "actions.move", "actions.copy", "actions.delete", "actions.mkdir", "actions.touch" } },
-    { name = "View", actions = { "actions.toggle_hidden", "actions.preview", "actions.toggle_watch" } },
-    { name = "Edit Mode", actions = { "actions.edit", "actions.edit_cancel" } },
-    { name = "Undo/Redo", actions = { "actions.undo", "actions.redo" } },
-    { name = "Help", actions = { "actions.help" } },
-  }
 
   -- Build reverse map: action -> key
   local action_to_key = {}
@@ -861,43 +800,216 @@ function M.action_help(bufnr)
     action_to_key[action] = key
   end
 
-  for _, category in ipairs(categories) do
-    local has_items = false
-    for _, action in ipairs(category.actions) do
-      if action_to_key[action] then
-        has_items = true
-        break
-      end
+  -- Helper to format key binding
+  local function fmt_key(action, desc)
+    local key = action_to_key[action]
+    if not key then return nil end
+    local key_disp = key
+    if #key_disp < 6 then
+      key_disp = key_disp .. string.rep(" ", 6 - #key_disp)
     end
+    return key_disp .. " " .. desc
+  end
 
-    if has_items then
-      table.insert(lines, category.name .. ":")
-      for _, action in ipairs(category.actions) do
-        local key = action_to_key[action]
-        if key then
-          local desc = action_descriptions[action] or action
-          -- Format key nicely
-          local key_display = key
-          if #key_display < 8 then
-            key_display = key_display .. string.rep(" ", 8 - #key_display)
-          end
-          table.insert(lines, "  " .. key_display .. "  " .. desc)
-        end
+  -- Define columns (each column is a category with items)
+  local col1 = { -- Navigation
+    title = "Navigation",
+    items = {
+      fmt_key("actions.select", "Open"),
+      fmt_key("actions.parent", "Parent"),
+      fmt_key("actions.close", "Close"),
+      fmt_key("actions.refresh", "Refresh"),
+      fmt_key("actions.jump_back", "Back"),
+      fmt_key("actions.jump_forward", "Forward"),
+    },
+  }
+
+  local col2 = { -- Files
+    title = "Files",
+    items = {
+      fmt_key("actions.move", "Move/Rename"),
+      fmt_key("actions.copy", "Copy"),
+      fmt_key("actions.delete", "Delete"),
+      fmt_key("actions.mkdir", "New dir"),
+      fmt_key("actions.touch", "New file"),
+      fmt_key("actions.undo", "Undo"),
+      fmt_key("actions.redo", "Redo"),
+    },
+  }
+
+  local col3 = { -- View
+    title = "View",
+    items = {
+      fmt_key("actions.toggle_hidden", "Hidden"),
+      fmt_key("actions.preview", "Preview"),
+      fmt_key("actions.toggle_watch", "Watch"),
+      fmt_key("actions.help", "Help"),
+    },
+  }
+
+  local col4 = { -- Marks
+    title = "Marks",
+    items = {
+      fmt_key("actions.toggle_mark", "Toggle"),
+      fmt_key("actions.unmark", "Unmark"),
+      fmt_key("actions.unmark_all", "Clear all"),
+    },
+  }
+
+  local col5 = { -- Edit
+    title = "Edit Mode",
+    items = {
+      fmt_key("actions.edit", "Enter edit"),
+      ":w     Apply changes",
+      ":e!    Cancel",
+    },
+  }
+
+  -- Filter nil items
+  local function filter_items(col)
+    local filtered = {}
+    for _, item in ipairs(col.items) do
+      if item then table.insert(filtered, item) end
+    end
+    col.items = filtered
+    return col
+  end
+
+  col1 = filter_items(col1)
+  col2 = filter_items(col2)
+  col3 = filter_items(col3)
+  col4 = filter_items(col4)
+  col5 = filter_items(col5)
+
+  -- Calculate column width (fixed for alignment)
+  local col_width = 20
+  local gap = 2
+
+  -- Build lines by combining columns horizontally
+  local function pad(str, width)
+    if not str then str = "" end
+    if #str < width then
+      return str .. string.rep(" ", width - #str)
+    end
+    return str:sub(1, width)
+  end
+
+  -- Get max rows needed
+  local max_rows = math.max(
+    #col1.items + 1,
+    #col2.items + 1,
+    #col3.items + 1,
+    #col4.items + 1,
+    #col5.items + 1
+  )
+
+  local lines = {}
+  local highlights = {} -- {line, start_col, end_col, hl_group}
+
+  -- Row 0: Column titles
+  local title_line = pad(col1.title, col_width)
+    .. string.rep(" ", gap)
+    .. pad(col2.title, col_width)
+    .. string.rep(" ", gap)
+    .. pad(col3.title, col_width)
+    .. string.rep(" ", gap)
+    .. pad(col4.title, col_width)
+    .. string.rep(" ", gap)
+    .. pad(col5.title, col_width)
+  table.insert(lines, title_line)
+
+  -- Add title highlights
+  local offset = 0
+  for i, col in ipairs({ col1, col2, col3, col4, col5 }) do
+    table.insert(highlights, { 0, offset, offset + #col.title, "Statement" })
+    offset = offset + col_width + gap
+  end
+
+  -- Separator
+  local total_width = (col_width * 5) + (gap * 4)
+  table.insert(lines, string.rep("-", total_width))
+
+  -- Content rows
+  for row = 1, max_rows do
+    local line = pad(col1.items[row], col_width)
+      .. string.rep(" ", gap)
+      .. pad(col2.items[row], col_width)
+      .. string.rep(" ", gap)
+      .. pad(col3.items[row], col_width)
+      .. string.rep(" ", gap)
+      .. pad(col4.items[row], col_width)
+      .. string.rep(" ", gap)
+      .. pad(col5.items[row], col_width)
+    table.insert(lines, line)
+
+    -- Highlight keys in each column
+    local line_idx = #lines - 1
+    offset = 0
+    for _, col in ipairs({ col1, col2, col3, col4, col5 }) do
+      if col.items[row] then
+        -- Highlight first 6 chars (the key)
+        table.insert(highlights, { line_idx, offset, offset + 6, "Special" })
       end
-      table.insert(lines, "")
+      offset = offset + col_width + gap
     end
   end
 
-  table.insert(lines, string.rep("-", 50))
-  table.insert(lines, "Press q, ? or <Esc> to close")
-  table.insert(lines, "Edit mode: <M-e> (Alt+e), then :w or :e!")
+  -- Blank line
+  table.insert(lines, "")
+
+  -- Commands section (2 columns)
+  table.insert(lines, "Commands")
+  table.insert(highlights, { #lines - 1, 0, 8, "Statement" })
+  table.insert(lines, string.rep("-", total_width))
+
+  local commands = {
+    { ":Vired [path]", "Open vired" },
+    { ":ViredOpen", "Path picker" },
+    { ":ViredProjects", "Project picker" },
+    { ":ViredProjectAdd", "Bookmark project" },
+    { ":ViredProjectRemove", "Remove bookmark" },
+    { ":ViredUndo", "Undo operation" },
+    { ":ViredRedo", "Redo operation" },
+  }
+
+  local cmd_col_width = math.floor((total_width - gap) / 2)
+  for i = 1, math.ceil(#commands / 2) do
+    local left_cmd = commands[i]
+    local right_cmd = commands[i + math.ceil(#commands / 2)]
+
+    local left_str = ""
+    local right_str = ""
+
+    if left_cmd then
+      left_str = pad(left_cmd[1], 20) .. " " .. left_cmd[2]
+    end
+    if right_cmd then
+      right_str = pad(right_cmd[1], 20) .. " " .. right_cmd[2]
+    end
+
+    local line = pad(left_str, cmd_col_width) .. string.rep(" ", gap) .. right_str
+    table.insert(lines, line)
+
+    -- Highlight command names
+    local line_idx = #lines - 1
+    if left_cmd then
+      table.insert(highlights, { line_idx, 0, #left_cmd[1], "Function" })
+    end
+    if right_cmd then
+      table.insert(highlights, { line_idx, cmd_col_width + gap, cmd_col_width + gap + #right_cmd[1], "Function" })
+    end
+  end
+
+  -- Footer
+  table.insert(lines, "")
+  table.insert(lines, string.rep("-", total_width))
+  table.insert(lines, "Press q/Esc to close | <M-e> enters full vim edit mode")
+  table.insert(highlights, { #lines - 1, 6, 7, "Special" })
+  table.insert(highlights, { #lines - 1, 8, 11, "Special" })
+  table.insert(highlights, { #lines - 1, 24, 29, "Special" })
 
   -- Calculate window size
-  local max_width = 0
-  for _, line in ipairs(lines) do
-    max_width = math.max(max_width, #line)
-  end
-  local width = max_width + 4
+  local width = total_width + 4
   local height = #lines
 
   -- Create floating window
@@ -928,16 +1040,8 @@ function M.action_help(bufnr)
 
   -- Apply highlights
   local ns = vim.api.nvim_create_namespace("vired_help")
-  -- Title
-  vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Title", 0, 0, -1)
-  -- Category headers
-  for i, line in ipairs(lines) do
-    if line:match("^%w.*:$") then
-      vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Statement", i - 1, 0, -1)
-    elseif line:match("^  %S") then
-      -- Key highlight
-      vim.api.nvim_buf_add_highlight(float_bufnr, ns, "Special", i - 1, 2, 12)
-    end
+  for _, hl in ipairs(highlights) do
+    vim.api.nvim_buf_add_highlight(float_bufnr, ns, hl[4], hl[1], hl[2], hl[3])
   end
 
   -- Close keymaps
