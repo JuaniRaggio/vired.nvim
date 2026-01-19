@@ -822,8 +822,18 @@ function M.action_help(bufnr)
 
   -- Build help lines
   local lines = {
-    "Vired Keybindings",
-    string.rep("-", 40),
+    "Vired Help",
+    string.rep("-", 50),
+    "",
+    "Commands:",
+    "  :ViredProjects      Open project picker",
+    "  :ViredProjectAdd    Bookmark current project",
+    "  :ViredProjectRemove Remove project bookmark",
+    "  :ViredUndo          Undo last operation",
+    "  :ViredRedo          Redo last operation",
+    "  :ViredOpen          Open with path picker",
+    "",
+    "Keybindings:",
     "",
   }
 
@@ -878,8 +888,9 @@ function M.action_help(bufnr)
     end
   end
 
-  table.insert(lines, string.rep("-", 40))
+  table.insert(lines, string.rep("-", 50))
   table.insert(lines, "Press q, ? or <Esc> to close")
+  table.insert(lines, "Edit mode: <M-e> (Alt+e), then :w or :e!")
 
   -- Calculate window size
   local max_width = 0
