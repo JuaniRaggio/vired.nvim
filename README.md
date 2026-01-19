@@ -2,6 +2,9 @@
 
 A file manager for Neovim inspired by Emacs dired + ivy/vertico: file operations with interactive fuzzy completion for paths.
 
+> [!NOTE]
+> This project is in **beta**. I'm actively developing and testing it as my daily driver. Expect bugs and breaking changes. Feedback and issues are welcome!
+
 ## Philosophy
 
 1. **Path-first, not tree-first** - Prioritizes path input with fuzzy completion over tree navigation
