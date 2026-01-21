@@ -206,18 +206,23 @@ local function get_completions(input, cwd)
   if pattern == "" then
     local completions = {}
 
-    -- Add "." entry to open vired in current directory
-    local current_dir = input
+    -- Determine current directory for "." entry
+    local current_dir = utils.expand(input)
     if not utils.is_absolute(current_dir) then
       current_dir = utils.join(cwd, current_dir)
     end
-    if fs.is_dir(current_dir:gsub("/$", "")) then
+    -- Remove trailing slash for directory check
+    local dir_to_check = current_dir:gsub("/$", "")
+
+    -- Always add "." entry at the top if we're in a valid directory
+    if dir_to_check ~= "" and fs.exists(dir_to_check) and fs.is_dir(dir_to_check) then
       table.insert(completions, {
         str = ".  [Open vired here]",
-        score = 100,
+        score = 1000, -- Very high score to stay at top
         positions = {},
         source = "filesystem",
         is_dot = true,
+        actual_path = dir_to_check,
       })
     end
 
@@ -231,7 +236,7 @@ local function get_completions(input, cwd)
         })
       end
     end
-    -- Sort directories first, then alphabetically (but keep "." at top)
+    -- Sort: "." first, then directories, then files alphabetically
     table.sort(completions, function(a, b)
       if a.is_dot then return true end
       if b.is_dot then return false end
@@ -620,6 +625,11 @@ local function complete_selected()
     if picker_win and vim.api.nvim_win_is_valid(picker_win) then
       vim.api.nvim_win_set_cursor(picker_win, { 1, #path })
     end
+    -- Change working directory to match navigation
+    local dir = path:gsub("/$", "")
+    if fs.is_dir(dir) then
+      vim.cmd.cd(dir)
+    end
     update_completions()
   else
     -- It's a file, complete it
@@ -651,6 +661,11 @@ local function go_up_directory()
     vim.api.nvim_buf_set_lines(picker_buf, 0, 1, false, { parent })
     if picker_win and vim.api.nvim_win_is_valid(picker_win) then
       vim.api.nvim_win_set_cursor(picker_win, { 1, #parent })
+    end
+    -- Change working directory to match navigation
+    local dir = parent:gsub("/$", "")
+    if fs.is_dir(dir) then
+      vim.cmd.cd(dir)
     end
     update_completions()
   end
@@ -690,28 +705,33 @@ local function confirm()
   end
 
   local input = vim.api.nvim_buf_get_lines(picker_buf, 0, 1, false)[1] or ""
-  local path = utils.expand(input)
-  if not utils.is_absolute(path) and picker_opts.cwd then
-    path = utils.join(picker_opts.cwd, path)
-  end
+
+  -- Use selected result path if available, otherwise use input
+  local path
+  local selected = selected_idx <= #results and results[selected_idx] or nil
 
   -- Handle "." special case - open vired in current input directory
-  if selected_idx <= #results and results[selected_idx] then
-    local selected = results[selected_idx]
-    if selected.is_dot then
-      -- Get the directory from current input
-      local dir = input
-      if dir:sub(-1) ~= "/" then
-        dir = utils.parent(path)
-      else
-        dir = path:gsub("/$", "")
-      end
-      M.close()
-      local vired_ok, vired = pcall(require, "vired")
-      if vired_ok and vired.open then
-        vired.open(dir)
-      end
-      return
+  if selected and selected.is_dot then
+    local dir = utils.expand(input)
+    if not utils.is_absolute(dir) and picker_opts.cwd then
+      dir = utils.join(picker_opts.cwd, dir)
+    end
+    dir = dir:gsub("/$", "")
+    M.close()
+    local vired_ok, vired = pcall(require, "vired")
+    if vired_ok and vired.open then
+      vired.open(dir)
+    end
+    return
+  end
+
+  -- Get path from selected result or input
+  if selected then
+    path = selected.str
+  else
+    path = utils.expand(input)
+    if not utils.is_absolute(path) and picker_opts.cwd then
+      path = utils.join(picker_opts.cwd, path)
     end
   end
 
@@ -720,37 +740,41 @@ local function confirm()
 
   if is_create then
     -- Confirm creation
+    local create_path = utils.expand(input)
+    if not utils.is_absolute(create_path) and picker_opts.cwd then
+      create_path = utils.join(picker_opts.cwd, create_path)
+    end
     utils.confirm({
-      prompt = "Create " .. path .. "?",
+      prompt = "Create " .. create_path .. "?",
       on_yes = function()
-        local is_dir = path:sub(-1) == "/"
+        local is_dir = create_path:sub(-1) == "/"
         local ok, err
         if is_dir then
-          ok, err = fs.mkdir(path)
+          ok, err = fs.mkdir(create_path)
         else
-          ok, err = fs.touch(path)
+          ok, err = fs.touch(create_path)
         end
 
         if ok then
           local on_select = picker_opts.on_select
           M.close()
-          on_select(path)
+          on_select(create_path)
         else
           vim.notify("vired: " .. err, vim.log.levels.ERROR)
         end
       end,
     })
   else
-    -- Check if it's a directory - open vired instead of selecting
-    if fs.is_dir(path) then
+    -- Check if it's a directory - open vired
+    local check_path = path:gsub("/$", "")
+    if fs.is_dir(check_path) then
       M.close()
       -- Open vired in the selected directory
       local vired_ok, vired = pcall(require, "vired")
       if vired_ok and vired.open then
-        vired.open(path)
+        vired.open(check_path)
       else
-        -- Fallback: use netrw or just notify
-        vim.cmd("edit " .. vim.fn.fnameescape(path))
+        vim.cmd("edit " .. vim.fn.fnameescape(check_path))
       end
     else
       -- It's a file - open it directly
