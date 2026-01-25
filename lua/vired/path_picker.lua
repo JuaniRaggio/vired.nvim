@@ -710,7 +710,7 @@ local function confirm()
   local path
   local selected = selected_idx <= #results and results[selected_idx] or nil
 
-  -- Handle "." special case - open vired in current input directory
+  -- Handle "." special case - select current directory
   if selected and selected.is_dot then
     local dir = utils.expand(input)
     if not utils.is_absolute(dir) and picker_opts.cwd then
@@ -718,9 +718,14 @@ local function confirm()
     end
     dir = dir:gsub("/$", "")
     M.close()
-    local vired_ok, vired = pcall(require, "vired")
-    if vired_ok and vired.open then
-      vired.open(dir)
+    -- Check for on_select callback first (move/copy operations)
+    if picker_opts.on_select then
+      picker_opts.on_select(dir)
+    else
+      local vired_ok, vired = pcall(require, "vired")
+      if vired_ok and vired.open then
+        vired.open(dir)
+      end
     end
     return
   end
