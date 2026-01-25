@@ -490,26 +490,36 @@ local selected_idx = 1
 
 ---Close project picker
 local function close_picker()
-  -- Close windows first (use pcall to handle any errors)
-  if picker_win and vim.api.nvim_win_is_valid(picker_win) then
-    pcall(vim.api.nvim_win_close, picker_win, true)
-  end
-  if results_win and vim.api.nvim_win_is_valid(results_win) then
-    pcall(vim.api.nvim_win_close, results_win, true)
-  end
-  -- Delete buffers (they might already be wiped by closing windows)
-  if picker_buf and vim.api.nvim_buf_is_valid(picker_buf) then
-    pcall(vim.api.nvim_buf_delete, picker_buf, { force = true })
-  end
-  if results_buf and vim.api.nvim_buf_is_valid(results_buf) then
-    pcall(vim.api.nvim_buf_delete, results_buf, { force = true })
-  end
-  picker_buf = nil
+  -- Store references and clear variables first to prevent re-entry
+  local win1, win2 = picker_win, results_win
+  local buf1, buf2 = picker_buf, results_buf
+
   picker_win = nil
-  results_buf = nil
   results_win = nil
+  picker_buf = nil
+  results_buf = nil
   filtered_projects = {}
   selected_idx = 1
+
+  -- Close windows (use pcall and schedule to avoid autocmd conflicts)
+  vim.schedule(function()
+    if win1 and vim.api.nvim_win_is_valid(win1) then
+      pcall(vim.api.nvim_win_close, win1, true)
+    end
+    if win2 and vim.api.nvim_win_is_valid(win2) then
+      pcall(vim.api.nvim_win_close, win2, true)
+    end
+    -- Buffers are usually auto-deleted when windows close with bufhidden=wipe
+    -- But try to delete them anyway if still valid
+    vim.schedule(function()
+      if buf1 and vim.api.nvim_buf_is_valid(buf1) then
+        pcall(vim.api.nvim_buf_delete, buf1, { force = true })
+      end
+      if buf2 and vim.api.nvim_buf_is_valid(buf2) then
+        pcall(vim.api.nvim_buf_delete, buf2, { force = true })
+      end
+    end)
+  end)
 end
 
 ---Render results in the results buffer
