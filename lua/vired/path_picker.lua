@@ -214,11 +214,11 @@ local function get_completions(input, cwd)
     -- Remove trailing slash for directory check
     local dir_to_check = current_dir:gsub("/$", "")
 
-    -- Always add "." entry at the top if we're in a valid directory
-    if dir_to_check ~= "" and fs.exists(dir_to_check) and fs.is_dir(dir_to_check) then
+    -- Always add "." entry at the top (use vim.fn.isdirectory for reliability)
+    if dir_to_check ~= "" and vim.fn.isdirectory(dir_to_check) == 1 then
       table.insert(completions, {
         str = ".  [Open vired here]",
-        score = 1000, -- Very high score to stay at top
+        score = 1000,
         positions = {},
         source = "filesystem",
         is_dot = true,
