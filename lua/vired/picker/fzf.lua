@@ -164,10 +164,14 @@ function M.open(opts)
 
           local item = fzf.utils.strip_ansi_coloring(selected[1])
 
-          -- Handle "." entry - open vired in current directory
+          -- Handle "." entry
           if item:match("^%.%s+%[") or item == "." then
-            local vired = require("vired")
-            vired.open(dir:gsub("/$", ""))
+            if opts.on_select then
+              opts.on_select(dir:gsub("/$", ""))
+            else
+              local vired = require("vired")
+              vired.open(dir:gsub("/$", ""))
+            end
             return
           end
 
@@ -189,12 +193,16 @@ function M.open(opts)
             return
           end
 
-          if fs.is_dir(path) then
-            -- Open vired
+          local clean_path = path:gsub("/$", "")
+          if opts.on_select then
+            -- Has callback (move/copy) - call it
+            opts.on_select(clean_path)
+          elseif fs.is_dir(path) then
+            -- No callback, directory - open vired
             local vired = require("vired")
-            vired.open(path:gsub("/$", ""))
+            vired.open(clean_path)
           else
-            -- Open file directly
+            -- No callback, file - open it
             vim.cmd("edit " .. vim.fn.fnameescape(path))
           end
         end,

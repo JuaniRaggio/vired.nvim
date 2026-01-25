@@ -765,11 +765,16 @@ local function confirm()
       end,
     })
   else
-    -- Check if it's a directory - open vired
     local check_path = path:gsub("/$", "")
-    if fs.is_dir(check_path) then
+    local on_select = picker_opts.on_select
+
+    -- If on_select callback is provided, use it (for move/copy operations)
+    if on_select then
       M.close()
-      -- Open vired in the selected directory
+      on_select(check_path)
+    elseif fs.is_dir(check_path) then
+      -- No callback, it's a directory - open vired
+      M.close()
       local vired_ok, vired = pcall(require, "vired")
       if vired_ok and vired.open then
         vired.open(check_path)
@@ -777,7 +782,7 @@ local function confirm()
         vim.cmd("edit " .. vim.fn.fnameescape(check_path))
       end
     else
-      -- It's a file - open it directly
+      -- No callback, it's a file - open it directly
       M.close()
       vim.cmd("edit " .. vim.fn.fnameescape(path))
     end

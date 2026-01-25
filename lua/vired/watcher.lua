@@ -68,34 +68,38 @@ function M.start(bufnr, path)
       return
     end
 
-    -- Skip if buffer no longer valid
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-      M.stop(bufnr)
-      return
-    end
+    -- Must use vim.schedule because this callback runs in fast event context
+    -- where nvim API calls are not allowed
+    vim.schedule(function()
+      -- Skip if buffer no longer valid
+      if not vim.api.nvim_buf_is_valid(bufnr) then
+        M.stop(bufnr)
+        return
+      end
 
-    local w = watchers[bufnr]
-    if not w then
-      return
-    end
+      local w = watchers[bufnr]
+      if not w then
+        return
+      end
 
-    -- Debounce: cancel existing timer and start new one
-    if w.timer then
-      w.timer:stop()
-      w.timer:close()
-      w.timer = nil
-    end
+      -- Debounce: cancel existing timer and start new one
+      if w.timer then
+        w.timer:stop()
+        w.timer:close()
+        w.timer = nil
+      end
 
-    w.pending_refresh = true
+      w.pending_refresh = true
 
-    w.timer = vim.loop.new_timer()
-    if w.timer then
-      w.timer:start(get_debounce_ms(), 0, function()
-        vim.schedule(function()
-          M._do_refresh(bufnr)
+      w.timer = vim.loop.new_timer()
+      if w.timer then
+        w.timer:start(get_debounce_ms(), 0, function()
+          vim.schedule(function()
+            M._do_refresh(bufnr)
+          end)
         end)
-      end)
-    end
+      end
+    end)
   end)
 
   if not ok then

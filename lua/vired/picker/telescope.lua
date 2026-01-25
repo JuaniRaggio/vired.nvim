@@ -201,29 +201,39 @@ function M.open(opts)
             return
           end
 
-          -- Handle "." entry - open vired in current directory
+          -- Handle "." entry
           if selection.is_dot then
             actions.close(prompt_bufnr)
-            local vired = require("vired")
-            vired.open(dir:gsub("/$", ""))
+            if opts.on_select then
+              opts.on_select(dir:gsub("/$", ""))
+            else
+              local vired = require("vired")
+              vired.open(dir:gsub("/$", ""))
+            end
             return
           end
 
           if selection.is_dir then
-            -- Navigate into directory or open vired
             actions.close(prompt_bufnr)
             if selection.value.display == ".." then
               -- Go to parent, reopen picker
               make_picker(selection.path):find()
+            elseif opts.on_select then
+              -- Has callback (move/copy) - call it
+              opts.on_select(selection.path:gsub("/$", ""))
             else
-              -- Open vired in this directory
+              -- No callback - open vired
               local vired = require("vired")
               vired.open(selection.path:gsub("/$", ""))
             end
           else
-            -- Open file directly
+            -- File selected
             actions.close(prompt_bufnr)
-            vim.cmd("edit " .. vim.fn.fnameescape(selection.path))
+            if opts.on_select then
+              opts.on_select(selection.path)
+            else
+              vim.cmd("edit " .. vim.fn.fnameescape(selection.path))
+            end
           end
         end)
 
