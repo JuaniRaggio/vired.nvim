@@ -652,6 +652,9 @@ local function select_project()
     -- Use vim.schedule to ensure picker is fully closed before opening
     vim.schedule(function()
       M.touch(project_path)
+      -- Always cd to project root (like opening nvim . in the project)
+      vim.cmd.cd(project_path)
+      -- Open vired in fullscreen at project root
       local vired = require("vired")
       vired.open(project_path)
     end)
