@@ -490,17 +490,19 @@ local selected_idx = 1
 
 ---Close project picker
 local function close_picker()
+  -- Close windows first (use pcall to handle any errors)
   if picker_win and vim.api.nvim_win_is_valid(picker_win) then
-    vim.api.nvim_win_close(picker_win, true)
+    pcall(vim.api.nvim_win_close, picker_win, true)
   end
   if results_win and vim.api.nvim_win_is_valid(results_win) then
-    vim.api.nvim_win_close(results_win, true)
+    pcall(vim.api.nvim_win_close, results_win, true)
   end
+  -- Delete buffers (they might already be wiped by closing windows)
   if picker_buf and vim.api.nvim_buf_is_valid(picker_buf) then
-    vim.api.nvim_buf_delete(picker_buf, { force = true })
+    pcall(vim.api.nvim_buf_delete, picker_buf, { force = true })
   end
   if results_buf and vim.api.nvim_buf_is_valid(results_buf) then
-    vim.api.nvim_buf_delete(results_buf, { force = true })
+    pcall(vim.api.nvim_buf_delete, results_buf, { force = true })
   end
   picker_buf = nil
   picker_win = nil
@@ -645,10 +647,14 @@ end
 local function select_project()
   if selected_idx >= 1 and selected_idx <= #filtered_projects then
     local item = filtered_projects[selected_idx]
+    local project_path = item.project.path
     close_picker()
-    M.touch(item.project.path)
-    local vired = require("vired")
-    vired.open(item.project.path)
+    -- Use vim.schedule to ensure picker is fully closed before opening
+    vim.schedule(function()
+      M.touch(project_path)
+      local vired = require("vired")
+      vired.open(project_path)
+    end)
   end
 end
 
