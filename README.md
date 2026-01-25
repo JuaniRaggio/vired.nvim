@@ -58,7 +58,7 @@ A file manager for Neovim inspired by Emacs dired + ivy/vertico: file operations
 - Per-buffer history (up to 100 entries)
 
 ### Path Picker
-- Multiple backends: telescope.nvim, fzf-lua, or built-in
+- Multiple backends: telescope.nvim or built-in
 - Vertico-like directory-by-directory completion
 - Live preview of directories
 
@@ -99,7 +99,7 @@ return {
 
       -- Path picker
       path_picker = {
-        backend = "auto",  -- "auto" | "telescope" | "fzf" | "lua"
+        backend = "auto",  -- "auto" | "telescope" | "lua"
         sources = { "filesystem", "recent", "bookmarks", "buffers" },
         create_directories = true,
         show_hidden = false,
@@ -349,9 +349,8 @@ History is per-buffer and persists until buffer closes.
 
 | Backend | Description |
 |---------|-------------|
-| `auto` | Auto-detect (telescope > fzf > lua) |
+| `auto` | Auto-detect (telescope > lua) |
 | `telescope` | Use telescope.nvim |
-| `fzf` | Use fzf-lua |
 | `lua` | Built-in Vertico-like picker |
 
 ### Keymaps (in picker)

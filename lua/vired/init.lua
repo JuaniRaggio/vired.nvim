@@ -148,19 +148,17 @@ function M.pick_and_open()
   local cwd = vim.loop.cwd()
 
   picker.open({
-    prompt = "Open directory: ",
+    prompt = "Open: ",
     default = cwd .. "/",
     cwd = cwd,
     create_if_missing = true,
     on_select = function(path)
-      -- Backends open vired for directories directly
-      -- but if somehow we get here with a file, open its parent
       local fs = require("vired.fs")
       if fs.is_file(path) then
-        local utils = require("vired.utils")
-        path = utils.parent(path)
-      end
-      if path then
+        -- It's a file - open it directly
+        vim.cmd("edit " .. vim.fn.fnameescape(path))
+      elseif path then
+        -- It's a directory - open vired
         M.open(path)
       end
     end,
