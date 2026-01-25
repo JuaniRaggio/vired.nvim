@@ -60,47 +60,56 @@ end
 ---@param type string "file"|"directory"|"link"
 ---@return string icon, string|nil highlight_group
 function M.get_icon(name, type)
+  -- Try to use nvim-web-devicons first for directories too
+  local ok, devicons = pcall(require, "nvim-web-devicons")
+
   if type == "directory" then
-    return "", "ViredDirectory"
+    if ok and devicons.get_icon then
+      -- Try to get folder icon from devicons
+      local icon = devicons.get_icon("folder", nil, { default = false })
+      if icon then
+        return icon, "ViredDirectory"
+      end
+    end
+    -- Fallback folder icon (nerd font)
+    return "\u{f07b}", "ViredDirectory"
   end
 
-  -- Try to use nvim-web-devicons
-  local ok, devicons = pcall(require, "nvim-web-devicons")
   if ok then
     local icon, hl = devicons.get_icon(name, nil, { default = true })
-    return icon or "", hl
+    return icon or "\u{f15b}", hl
   end
 
   -- Fallback icons
   if type == "link" then
-    return "", "ViredSymlink"
+    return "\u{f0c1}", "ViredSymlink"
   end
 
   local ext = name:match("%.([^%.]+)$")
   local icon_map = {
-    lua = "",
-    py = "",
-    js = "",
-    ts = "",
-    rs = "",
-    go = "",
-    c = "",
-    cpp = "",
-    h = "",
-    md = "",
-    json = "",
-    yaml = "",
-    yml = "",
-    toml = "",
-    sh = "",
-    bash = "",
-    zsh = "",
-    vim = "",
-    git = "",
-    txt = "",
+    lua = "\u{e620}",
+    py = "\u{e73c}",
+    js = "\u{e74e}",
+    ts = "\u{e628}",
+    rs = "\u{e7a8}",
+    go = "\u{e626}",
+    c = "\u{e61e}",
+    cpp = "\u{e61d}",
+    h = "\u{e61e}",
+    md = "\u{e73e}",
+    json = "\u{e60b}",
+    yaml = "\u{e60b}",
+    yml = "\u{e60b}",
+    toml = "\u{e60b}",
+    sh = "\u{e795}",
+    bash = "\u{e795}",
+    zsh = "\u{e795}",
+    vim = "\u{e62b}",
+    git = "\u{e702}",
+    txt = "\u{f15c}",
   }
 
-  return icon_map[ext] or "", "ViredFile"
+  return icon_map[ext] or "\u{f15b}", "ViredFile"
 end
 
 return M
