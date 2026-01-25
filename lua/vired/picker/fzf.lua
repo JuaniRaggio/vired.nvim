@@ -156,7 +156,8 @@ function M.open(opts)
 
           if path and fs.is_dir(path) then
             -- Change working directory
-            vim.cmd.cd(path:gsub("/$", ""))
+            local clean_path = path:gsub("/$", "")
+            vim.cmd("cd " .. vim.fn.fnameescape(clean_path))
             -- Navigate into directory
             vim.schedule(function()
               open_picker(path)
