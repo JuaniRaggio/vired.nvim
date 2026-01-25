@@ -69,91 +69,13 @@ function M.open(opts)
     return entries
   end
 
-  ---Generate preview for an entry
-  ---@param dir string Current directory
-  ---@return function
-  local function make_previewer(dir)
-    return function(items)
-      if not items or #items == 0 then
-        return {}
-      end
-
-      local item = items[1]
-      -- Strip ANSI codes
-      item = fzf.utils.strip_ansi_coloring(item)
-
-      -- Handle "." entry - preview current directory
-      if item:match("^%.%s+%[") or item == "." then
-        item = "."
-      end
-
-      local path
-      if item == "." then
-        path = dir:gsub("/$", "")
-      elseif item == "../" or item == ".." then
-        path = utils.parent(dir:sub(1, -2))
-      else
-        -- Remove trailing /
-        local name = item:gsub("/$", "")
-        path = utils.join(dir, name)
-      end
-
-      if not path or not fs.exists(path) then
-        return { "(path not found)" }
-      end
-
-      local lines = {}
-
-      if fs.is_dir(path) then
-        -- Show directory contents
-        local preview_entries, _ = fs.readdir(path, cfg.path_picker.show_hidden)
-        if preview_entries and #preview_entries > 0 then
-          for i, e in ipairs(preview_entries) do
-            if i > 30 then
-              table.insert(lines, string.format("... and %d more", #preview_entries - 30))
-              break
-            end
-            local icon = e.type == "directory" and "" or ""
-            local name = e.name
-            if e.type == "directory" then
-              name = name .. "/"
-            end
-            table.insert(lines, string.format(" %s %s", icon, name))
-          end
-        else
-          table.insert(lines, "  (empty directory)")
-        end
-      else
-        -- Show file info
-        local stat = vim.loop.fs_stat(path)
-        if stat then
-          table.insert(lines, "File: " .. utils.basename(path))
-          table.insert(lines, "Size: " .. utils.format_size(stat.size))
-          table.insert(lines, "Modified: " .. utils.format_time(stat.mtime.sec))
-        end
-      end
-
-      return lines
-    end
-  end
-
   local function open_picker(dir)
     local entries = get_entries(dir)
 
     fzf.fzf_exec(entries, {
       prompt = (opts.prompt or "Path") .. " " .. dir .. " > ",
-      previewer = {
-        _ctor = function()
-          return {
-            parse_entry = function(_, entry)
-              return entry
-            end,
-            preview = make_previewer(dir),
-          }
-        end,
-      },
+      previewer = false, -- Disable previewer to avoid API compatibility issues
       fzf_opts = {
-        ["--preview-window"] = "right:50%",
         ["--ansi"] = "",
       },
       actions = {
