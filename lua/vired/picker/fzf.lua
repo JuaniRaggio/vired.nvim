@@ -41,6 +41,9 @@ function M.open(opts)
   local function get_entries(dir)
     local entries = {}
 
+    -- Add "." entry to open vired in current directory
+    table.insert(entries, fzf.utils.ansi_codes.green(".") .. "  [Open vired here]")
+
     -- Add parent directory option
     local parent = utils.parent(dir:sub(1, -2))
     if parent and parent ~= dir:sub(1, -2) then
@@ -79,8 +82,15 @@ function M.open(opts)
       -- Strip ANSI codes
       item = fzf.utils.strip_ansi_coloring(item)
 
+      -- Handle "." entry - preview current directory
+      if item:match("^%.%s+%[") or item == "." then
+        item = "."
+      end
+
       local path
-      if item == "../" or item == ".." then
+      if item == "." then
+        path = dir:gsub("/$", "")
+      elseif item == "../" or item == ".." then
         path = utils.parent(dir:sub(1, -2))
       else
         -- Remove trailing /
@@ -154,6 +164,13 @@ function M.open(opts)
 
           local item = fzf.utils.strip_ansi_coloring(selected[1])
 
+          -- Handle "." entry - open vired in current directory
+          if item:match("^%.%s+%[") or item == "." then
+            local vired = require("vired")
+            vired.open(dir:gsub("/$", ""))
+            return
+          end
+
           local path
           if item == "../" or item == ".." then
             path = utils.parent(dir:sub(1, -2))
@@ -175,12 +192,10 @@ function M.open(opts)
           if fs.is_dir(path) then
             -- Open vired
             local vired = require("vired")
-            vired.open(path)
+            vired.open(path:gsub("/$", ""))
           else
-            -- File selected
-            if opts.on_select then
-              opts.on_select(path)
-            end
+            -- Open file directly
+            vim.cmd("edit " .. vim.fn.fnameescape(path))
           end
         end,
         ["tab"] = function(selected)
@@ -189,6 +204,11 @@ function M.open(opts)
           end
 
           local item = fzf.utils.strip_ansi_coloring(selected[1])
+
+          -- Skip "." entry for tab navigation
+          if item:match("^%.%s+%[") or item == "." then
+            return
+          end
 
           local path
           if item == "../" or item == ".." then
@@ -205,6 +225,8 @@ function M.open(opts)
           end
 
           if path and fs.is_dir(path) then
+            -- Change working directory
+            vim.cmd.cd(path:gsub("/$", ""))
             -- Navigate into directory
             vim.schedule(function()
               open_picker(path)

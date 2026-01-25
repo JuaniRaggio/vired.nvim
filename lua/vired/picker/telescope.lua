@@ -47,6 +47,15 @@ function M.open(opts)
   local function get_entries(dir)
     local entries = {}
 
+    -- Add "." entry to open vired in current directory
+    table.insert(entries, {
+      display = ".  [Open vired here]",
+      path = dir,
+      is_dir = true,
+      is_dot = true,
+      ordinal = ".",
+    })
+
     -- Add parent directory option
     local parent = utils.parent(dir:sub(1, -2))
     if parent and parent ~= dir:sub(1, -2) then
@@ -162,6 +171,7 @@ function M.open(opts)
             ordinal = entry.ordinal,
             path = entry.path,
             is_dir = entry.is_dir,
+            is_dot = entry.is_dot,
           }
         end,
       }),
@@ -183,10 +193,19 @@ function M.open(opts)
               if fs.is_dir(path) then
                 local vired = require("vired")
                 vired.open(path)
-              elseif opts.on_select then
-                opts.on_select(path)
+              else
+                -- Open file directly
+                vim.cmd("edit " .. vim.fn.fnameescape(path))
               end
             end
+            return
+          end
+
+          -- Handle "." entry - open vired in current directory
+          if selection.is_dot then
+            actions.close(prompt_bufnr)
+            local vired = require("vired")
+            vired.open(dir:gsub("/$", ""))
             return
           end
 
@@ -199,30 +218,34 @@ function M.open(opts)
             else
               -- Open vired in this directory
               local vired = require("vired")
-              vired.open(selection.path)
+              vired.open(selection.path:gsub("/$", ""))
             end
           else
-            -- Select file
+            -- Open file directly
             actions.close(prompt_bufnr)
-            if opts.on_select then
-              opts.on_select(selection.path)
-            end
+            vim.cmd("edit " .. vim.fn.fnameescape(selection.path))
           end
         end)
 
         -- Tab: navigate into directory (stay in picker)
         map("i", "<Tab>", function()
           local selection = action_state.get_selected_entry()
-          if selection and selection.is_dir then
+          if selection and selection.is_dir and not selection.is_dot then
             actions.close(prompt_bufnr)
+            -- Change working directory
+            local new_dir = selection.path:gsub("/$", "")
+            vim.cmd.cd(new_dir)
             make_picker(selection.path):find()
           end
         end)
 
         map("n", "<Tab>", function()
           local selection = action_state.get_selected_entry()
-          if selection and selection.is_dir then
+          if selection and selection.is_dir and not selection.is_dot then
             actions.close(prompt_bufnr)
+            -- Change working directory
+            local new_dir = selection.path:gsub("/$", "")
+            vim.cmd.cd(new_dir)
             make_picker(selection.path):find()
           end
         end)
@@ -234,6 +257,8 @@ function M.open(opts)
             local parent = utils.parent(dir:sub(1, -2))
             if parent then
               actions.close(prompt_bufnr)
+              -- Change working directory to parent
+              vim.cmd.cd(parent)
               make_picker(parent .. "/"):find()
             end
           else
