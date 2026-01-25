@@ -377,9 +377,46 @@ function M.get_entry_at_cursor(bufnr)
   return buf_data.entries[entry_idx]
 end
 
----Open directory or file
+---Open directory or file(s)
 ---@param bufnr number
 function M.action_select(bufnr)
+  local buf_data = M.buffers[bufnr]
+  if not buf_data then
+    return
+  end
+
+  -- Check if there are marked entries
+  local marked = {}
+  for _, entry in ipairs(buf_data.entries) do
+    if buf_data.marks[entry.path] then
+      table.insert(marked, entry)
+    end
+  end
+
+  -- If multiple files are marked, open them all as buffers
+  if #marked > 1 then
+    local files_to_open = {}
+    for _, entry in ipairs(marked) do
+      if entry.type ~= "directory" then
+        table.insert(files_to_open, entry.path)
+      end
+    end
+
+    if #files_to_open > 0 then
+      -- Open first file in current window
+      vim.cmd.edit(files_to_open[1])
+      -- Open rest as hidden buffers
+      for i = 2, #files_to_open do
+        vim.cmd("badd " .. vim.fn.fnameescape(files_to_open[i]))
+      end
+      -- Clear marks
+      buf_data.marks = {}
+      vim.notify(string.format("vired: Opened %d files", #files_to_open), vim.log.levels.INFO)
+      return
+    end
+  end
+
+  -- Single entry (marked or at cursor)
   local entry = M.get_entry_at_cursor(bufnr)
   if not entry then
     return
@@ -574,16 +611,20 @@ function M.action_move(bufnr)
     default = default,
     cwd = buf_data.path,
     on_select = function(dest)
+      local dest_is_dir = fs.is_dir(dest)
+
       for _, entry in ipairs(entries) do
         local target = dest
-        -- If dest is a directory and multiple files, append filename
-        if #entries > 1 or (fs.is_dir(dest) and dest:sub(-1) == "/") then
+        -- If dest is a directory, append filename to move into it
+        if dest_is_dir then
           target = utils.join(dest, entry.name)
         end
 
         local ok, err = undo.rename_with_undo(entry.path, target)
         if not ok then
           vim.notify("vired: " .. err, vim.log.levels.ERROR)
+        else
+          vim.notify(string.format("vired: Moved %s -> %s", entry.name, target), vim.log.levels.INFO)
         end
       end
       -- Clear marks and refresh
@@ -621,16 +662,20 @@ function M.action_copy(bufnr)
     default = default,
     cwd = buf_data.path,
     on_select = function(dest)
+      local dest_is_dir = fs.is_dir(dest)
+
       for _, entry in ipairs(entries) do
         local target = dest
-        -- If dest is a directory and multiple files, append filename
-        if #entries > 1 or (fs.is_dir(dest) and dest:sub(-1) == "/") then
+        -- If dest is a directory, append filename to copy into it
+        if dest_is_dir then
           target = utils.join(dest, entry.name)
         end
 
         local ok, err = undo.copy_with_undo(entry.path, target)
         if not ok then
           vim.notify("vired: " .. err, vim.log.levels.ERROR)
+        else
+          vim.notify(string.format("vired: Copied %s -> %s", entry.name, target), vim.log.levels.INFO)
         end
       end
       M.refresh(bufnr)
