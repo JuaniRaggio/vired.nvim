@@ -740,8 +740,8 @@ local function confirm()
     end
   end
 
-  -- Check if selecting "create" option
-  local is_create = selected_idx > #results and picker_opts.create_if_missing and not fs.exists(path)
+  -- Check if selecting "create" option (but NOT when we have an on_select callback like move/copy)
+  local is_create = selected_idx > #results and picker_opts.create_if_missing and not fs.exists(path) and not picker_opts.on_select
 
   if is_create then
     -- Confirm creation
