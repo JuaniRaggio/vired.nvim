@@ -548,6 +548,9 @@ function M.confirm(opts)
 
   local win = vim.api.nvim_open_win(bufnr, true, win_opts)
 
+  -- Ensure focus is on the popup window
+  vim.api.nvim_set_current_win(win)
+
   -- Apply highlights
   local ns = vim.api.nvim_create_namespace("vired_confirm")
   -- Highlight the key hints line

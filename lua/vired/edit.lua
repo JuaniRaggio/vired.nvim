@@ -594,17 +594,19 @@ function M.apply_changes(bufnr)
     return
   end
 
-  -- Show confirmation
+  -- Show confirmation (scheduled to ensure focus after :w command completes)
   local summary = M.format_operations_summary(operations)
-  utils.confirm({
-    prompt = "Apply changes?\n" .. summary,
-    on_yes = function()
-      M.execute_operations(bufnr, buf_data, operations)
-    end,
-    on_no = function()
-      vim.notify("vired: Changes not applied", vim.log.levels.INFO)
-    end,
-  })
+  vim.schedule(function()
+    utils.confirm({
+      prompt = "Apply changes?\n" .. summary,
+      on_yes = function()
+        M.execute_operations(bufnr, buf_data, operations)
+      end,
+      on_no = function()
+        vim.notify("vired: Changes not applied", vim.log.levels.INFO)
+      end,
+    })
+  end)
 end
 
 ---Format operations for display
@@ -746,7 +748,7 @@ local function validate_operation(op)
     end
     -- Check for invalid characters in new name
     local new_name = utils.basename(op.dest)
-    if new_name:match("[/\0]") then
+    if new_name:match("[/%z]") then
       return false, string.format("Invalid characters in filename: %s", new_name)
     end
 
@@ -768,7 +770,7 @@ local function validate_operation(op)
     end
     -- Check for invalid characters
     local new_name = utils.basename(op.dest)
-    if new_name:match("[/\0]") then
+    if new_name:match("[/%z]") then
       return false, string.format("Invalid characters in filename: %s", new_name)
     end
   end
