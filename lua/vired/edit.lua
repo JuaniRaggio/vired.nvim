@@ -94,11 +94,12 @@ function M.parse_line_name(line, columns)
 
   local name_part = nil
 
-  -- Strategy 1: If mtime is in columns, find YYYY-MM-DD pattern
+  -- Strategy 1: If mtime is in columns, find YYYY-MM-DD HH:MM pattern
   if vim.tbl_contains(columns, "mtime") then
-    local _, date_finish = line:find("%d%d%d%d%-%d%d%-%d%d")
-    if date_finish then
-      name_part = line:sub(date_finish + 2) -- +2 for space after date
+    -- Match full datetime format: YYYY-MM-DD HH:MM
+    local _, datetime_finish = line:find("%d%d%d%d%-%d%d%-%d%d %d%d:%d%d")
+    if datetime_finish then
+      name_part = line:sub(datetime_finish + 2) -- +2 for space after datetime
     end
   end
 
